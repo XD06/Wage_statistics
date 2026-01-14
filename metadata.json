@@ -1,0 +1,5 @@
+{
+  "name": "WeeklyKeeper",
+  "description": "A week-cycle bookkeeping system focused on daily budget management (Mon-Sat) with automatic time-based categorization and historical tracking.",
+  "requestFramePermissions": []
+}
