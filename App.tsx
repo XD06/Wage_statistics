@@ -17,23 +17,25 @@ const App: React.FC = () => {
   const [data, setData] = useState<AppState>(loadData());
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
 
-  // Determine current week key
-  const today = new Date();
-  const currentWeekMonday = getMonday(today);
-  const currentWeekKey = formatDateKey(currentWeekMonday);
-  const todayStr = today.toISOString().split('T')[0];
+  // State: The specific date the user is currently viewing/editing in Dashboard
+  const [viewingDate, setViewingDate] = useState<Date>(new Date());
 
+  // Derived: Determine the week key for the VIEWING date
+  const viewingWeekMonday = getMonday(viewingDate);
+  const viewingWeekKey = formatDateKey(viewingWeekMonday);
+  const viewingDateStr = formatDateKey(viewingDate);
+
+  // Initialize data for the viewing week if it doesn't exist
   useEffect(() => {
-    // Initialization logic for new week
     setData(prev => {
-      // If this week doesn't exist, create it
-      if (!prev.weeks[currentWeekKey]) {
+      // If the week for the selected date doesn't exist, create it based on current settings
+      if (!prev.weeks[viewingWeekKey]) {
         return {
           ...prev,
           weeks: {
             ...prev.weeks,
-            [currentWeekKey]: {
-              weekStartDate: currentWeekKey,
+            [viewingWeekKey]: {
+              weekStartDate: viewingWeekKey,
               budget: prev.currentBudgetSetting, 
               hourlyRate: prev.currentHourlyRateSetting || 0,
               shiftMode: prev.currentShiftSetting || 'day', // Inherit setting
@@ -45,7 +47,7 @@ const App: React.FC = () => {
       }
       return prev;
     });
-  }, [currentWeekKey]);
+  }, [viewingWeekKey]);
 
   useEffect(() => {
     saveData(data);
@@ -59,8 +61,8 @@ const App: React.FC = () => {
       currentShiftSetting: shift,
       weeks: {
         ...prev.weeks,
-        [currentWeekKey]: {
-          ...prev.weeks[currentWeekKey],
+        [viewingWeekKey]: {
+          ...prev.weeks[viewingWeekKey],
           budget: budget,
           hourlyRate: hourlyRate,
           shiftMode: shift
@@ -71,16 +73,16 @@ const App: React.FC = () => {
 
   const handleUpdateWorkHours = (hours: number) => {
       setData(prev => {
-          const weekData = prev.weeks[currentWeekKey];
+          const weekData = prev.weeks[viewingWeekKey];
           return {
               ...prev,
               weeks: {
                   ...prev.weeks,
-                  [currentWeekKey]: {
+                  [viewingWeekKey]: {
                       ...weekData,
                       dailyHours: {
                           ...weekData.dailyHours,
-                          [todayStr]: hours
+                          [viewingDateStr]: hours
                       }
                   }
               }
@@ -105,11 +107,12 @@ const App: React.FC = () => {
   };
 
   const handleAddExpense = (amount: number, category: Category | null, note: string, time: string) => {
-    const expenseDate = new Date();
+    // Construct the expense timestamp based on viewingDate + time string
     const [hours, mins] = time.split(':').map(Number);
-    expenseDate.setHours(hours, mins);
+    const expenseDate = new Date(viewingDate); 
+    expenseDate.setHours(hours, mins, 0, 0);
 
-    const currentWeekData = data.weeks[currentWeekKey];
+    const currentWeekData = data.weeks[viewingWeekKey];
     const isNightShift = currentWeekData?.shiftMode === 'night';
 
     // Auto Categorization Logic
@@ -118,18 +121,11 @@ const App: React.FC = () => {
       const h = hours + mins / 60;
       
       if (isNightShift) {
-          // Night Shift Logic (Opposite roughly)
-          // "Breakfast" (Start of shift) ~ 7pm-9pm (19-21)
-          // "Lunch" (Mid shift) ~ 11pm-1am (23-1) or (23-25)
-          // "Dinner" (End of shift) ~ 6am-8am
-          
-          if (h >= 18.5 && h <= 21) finalCategory = Category.Breakfast; // "Start meal"
-          else if (h >= 23 || h <= 2) finalCategory = Category.Lunch;   // "Mid meal"
-          else if (h >= 6 && h <= 8) finalCategory = Category.Dinner;   // "End meal"
+          if (h >= 18.5 && h <= 21) finalCategory = Category.Breakfast;
+          else if (h >= 23 || h <= 2) finalCategory = Category.Lunch;
+          else if (h >= 6 && h <= 8) finalCategory = Category.Dinner;
           else finalCategory = Category.Other;
-
       } else {
-          // Day Shift Logic
           if (h >= 7.5 && h <= 8.5) finalCategory = Category.Breakfast;
           else if (h >= 11 && h <= 12) finalCategory = Category.Lunch;
           else if (h >= 17 && h <= 18) finalCategory = Category.Dinner;
@@ -147,8 +143,8 @@ const App: React.FC = () => {
     };
 
     setData(prev => {
-      const week = prev.weeks[currentWeekKey] || {
-        weekStartDate: currentWeekKey,
+      const week = prev.weeks[viewingWeekKey] || {
+        weekStartDate: viewingWeekKey,
         budget: prev.currentBudgetSetting,
         hourlyRate: prev.currentHourlyRateSetting || 0,
         shiftMode: prev.currentShiftSetting || 'day',
@@ -160,7 +156,7 @@ const App: React.FC = () => {
         ...prev,
         weeks: {
           ...prev.weeks,
-          [currentWeekKey]: {
+          [viewingWeekKey]: {
             ...week,
             expenses: [newExpense, ...week.expenses]
           }
@@ -207,13 +203,25 @@ const App: React.FC = () => {
       e.target.value = '';
   };
 
-  const currentWeekData = data.weeks[currentWeekKey] || {
-    weekStartDate: currentWeekKey,
-    budget: 0,
-    hourlyRate: 0,
-    shiftMode: 'day',
+  // Get data for the currently selected date's week
+  // If undefined (during init), provide a fallback structure to prevent crashes
+  const currentWeekData = data.weeks[viewingWeekKey] || {
+    weekStartDate: viewingWeekKey,
+    budget: data.currentBudgetSetting,
+    hourlyRate: data.currentHourlyRateSetting || 0,
+    shiftMode: data.currentShiftSetting || 'day',
     dailyHours: {},
     expenses: []
+  };
+
+  const handleTabChange = (newView: View) => {
+      setView(newView);
+      // Optional: Reset to "Today" when clicking the dashboard tab? 
+      // User request implies they want to edit specific dates, but usually "Dashboard" tab means "Now".
+      // Let's reset to Today when clicking the tab to ensure they don't get lost in the past.
+      if (newView === View.Dashboard) {
+          setViewingDate(new Date());
+      }
   };
 
   return (
@@ -238,9 +246,11 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 no-scrollbar">
             {view === View.Dashboard ? (
                 <Dashboard 
+                    viewingDate={viewingDate}
+                    onDateChange={setViewingDate}
                     weekData={currentWeekData} 
                     onAddExpense={handleAddExpense}
-                    onDeleteExpense={(id) => handleDeleteExpense(currentWeekKey, id)}
+                    onDeleteExpense={(id) => handleDeleteExpense(viewingWeekKey, id)}
                     onUpdateWorkHours={handleUpdateWorkHours}
                     onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
                 />
@@ -256,14 +266,14 @@ const App: React.FC = () => {
         {/* Bottom Navigation */}
         <nav className="fixed bottom-0 md:absolute w-full md:w-auto md:max-w-md left-0 right-0 mx-auto bg-white border-t border-gray-100 pb-safe pt-2 px-6 flex justify-around items-center z-20 pb-6">
             <button 
-                onClick={() => setView(View.Dashboard)}
+                onClick={() => handleTabChange(View.Dashboard)}
                 className={`flex flex-col items-center gap-1 p-2 rounded-xl w-24 transition-all ${view === View.Dashboard ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'}`}
             >
                 <LayoutDashboard size={24} strokeWidth={view === View.Dashboard ? 2.5 : 2} />
-                <span className="text-[10px] font-bold">今日</span>
+                <span className="text-[10px] font-bold">记账</span>
             </button>
             <button 
-                onClick={() => setView(View.History)}
+                onClick={() => handleTabChange(View.History)}
                 className={`flex flex-col items-center gap-1 p-2 rounded-xl w-24 transition-all ${view === View.History ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'}`}
             >
                 <HistoryIcon size={24} strokeWidth={view === View.History ? 2.5 : 2} />

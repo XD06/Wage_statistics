@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Category, Expense, WeekData } from '../types';
+import { Category, WeekData } from '../types';
 import { CATEGORY_CONFIG, WEEK_DAYS } from '../constants';
-import { formatTime, isSunday } from '../services/dateService';
+import { formatTime, isSunday, formatDateKey } from '../services/dateService';
 import ExpenseItem from './ExpenseItem';
-import { AlertTriangle, Plus, Settings, Briefcase, Wallet, Timer, Moon, Sun, Calendar } from 'lucide-react';
+import { AlertTriangle, Plus, Settings, Briefcase, Wallet, Moon, Sun, Calendar, ChevronDown } from 'lucide-react';
 
 interface Props {
+  viewingDate: Date;
+  onDateChange: (date: Date) => void;
   weekData: WeekData;
   onAddExpense: (amount: number, category: Category | null, note: string, time: string) => void;
   onDeleteExpense: (id: string) => void;
@@ -13,16 +15,15 @@ interface Props {
   onOpenBudgetModal: () => void;
 }
 
-const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, onUpdateWorkHours, onOpenBudgetModal }) => {
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  const isTodaySunday = isSunday(today);
+const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAddExpense, onDeleteExpense, onUpdateWorkHours, onOpenBudgetModal }) => {
+  const viewingDateStr = formatDateKey(viewingDate);
+  const isViewingDateSunday = isSunday(viewingDate);
 
   // Date Display Logic
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1;
-  const day = today.getDate();
-  const weekDay = WEEK_DAYS[today.getDay()];
+  const year = viewingDate.getFullYear();
+  const month = viewingDate.getMonth() + 1;
+  const day = viewingDate.getDate();
+  const weekDay = WEEK_DAYS[viewingDate.getDay()];
 
   // Form State for Expense
   const [amount, setAmount] = useState('');
@@ -34,13 +35,13 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
   const [todayHours, setTodayHours] = useState<string>('');
 
   useEffect(() => {
-     const savedHours = weekData.dailyHours?.[todayStr];
+     const savedHours = weekData.dailyHours?.[viewingDateStr];
      if (savedHours !== undefined) {
          setTodayHours(savedHours.toString());
      } else {
          setTodayHours('');
      }
-  }, [weekData.dailyHours, todayStr]);
+  }, [weekData.dailyHours, viewingDateStr]);
 
   // --- Calculations ---
   const currentHourlyRate = weekData.hourlyRate || 0;
@@ -52,20 +53,15 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
 
   // Expenses
   const todayExpensesList = useMemo(() => 
-    weekData.expenses.filter(e => e.dateStr === todayStr).sort((a, b) => b.timestamp - a.timestamp),
-  [weekData.expenses, todayStr]);
+    weekData.expenses.filter(e => e.dateStr === viewingDateStr).sort((a, b) => b.timestamp - a.timestamp),
+  [weekData.expenses, viewingDateStr]);
 
   const todaySpent = todayExpensesList.reduce((sum, e) => sum + e.amount, 0);
   const weekSpent = weekData.expenses.reduce((sum, e) => sum + e.amount, 0);
 
-  // --- New Logic: Weekly Aggregate Subsidy ---
-  // Requirement: "Daily exceed 28 does not deduct. Only if WEEKLY cumulative > WEEKLY subsidy."
   const weekBudget = weekData.budget;
   const weekExcess = Math.max(0, weekSpent - weekBudget);
   const weekNetIncome = wageWeekTotal - weekExcess;
-
-  // For visual progress bar only (Daily Reference)
-  const dailyReference = weekBudget / 6;
 
   const handleExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,25 +84,43 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
       }
   };
 
+  const handleDateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newDate = new Date(e.target.value);
+      if (!isNaN(newDate.getTime())) {
+          onDateChange(newDate);
+      }
+  };
+
   return (
     <div className="pb-24 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      {/* 0. Calendar Header */}
+      {/* 0. Calendar Header (Interactive) */}
       <div className="flex items-center justify-between px-1 pt-2">
-          <div>
+          <div className="relative group cursor-pointer p-1 -m-1 rounded-xl hover:bg-gray-100 transition-colors">
               <div className="flex items-baseline gap-2">
                   <h1 className="text-3xl font-extrabold text-gray-900">{day}日</h1>
-                  <span className="text-sm font-bold text-gray-500">{weekDay}</span>
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
+                      {weekDay}
+                      <ChevronDown size={14} className="opacity-50" />
+                  </span>
               </div>
               <p className="text-xs font-medium text-gray-400">{year}年{month}月</p>
+              
+              {/* Invisible Native Date Picker Layer */}
+              <input 
+                  type="date" 
+                  value={viewingDateStr}
+                  onChange={handleDateInputChange}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+              />
           </div>
           
-          <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 shadow-sm ${isTodaySunday ? 'bg-yellow-50 border-yellow-100 text-yellow-700' : 'bg-white border-gray-100 text-gray-600'}`}>
-              <Calendar size={16} className={isTodaySunday ? "text-yellow-600" : "text-gray-400"} />
+          <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 shadow-sm ${isViewingDateSunday ? 'bg-yellow-50 border-yellow-100 text-yellow-700' : 'bg-white border-gray-100 text-gray-600'}`}>
+              <Calendar size={16} className={isViewingDateSunday ? "text-yellow-600" : "text-gray-400"} />
               <div className="text-right">
-                  <p className="text-[10px] font-bold leading-tight">{isTodaySunday ? '本周结算' : '正常工作'}</p>
+                  <p className="text-[10px] font-bold leading-tight">{isViewingDateSunday ? '周日结算' : '正常工作'}</p>
                   <p className="text-[8px] opacity-80 leading-tight">
-                      {isTodaySunday ? 'Rest Day' : 'Work Day'}
+                      {isViewingDateSunday ? 'Settlement' : 'Work Day'}
                   </p>
               </div>
           </div>
@@ -131,7 +145,7 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
         <div className="flex justify-between items-start mb-6 relative z-10">
           <div>
             <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-gray-400 text-xs font-medium uppercase tracking-wider">本周净收入</h2>
+                <h2 className="text-gray-400 text-xs font-medium uppercase tracking-wider">本周净收入 (截至目前)</h2>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded border ${weekData.shiftMode === 'night' ? 'border-indigo-400 text-indigo-300' : 'border-orange-400 text-orange-300'}`}>
                     {weekData.shiftMode === 'night' ? '晚班' : '白班'}
                 </span>
@@ -158,7 +172,7 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
             <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-md border border-white/5">
                 <div className={`flex items-center gap-1.5 mb-2 ${weekData.shiftMode === 'night' ? 'text-indigo-200' : 'text-blue-200'}`}>
                     <Briefcase size={14} />
-                    <span className="text-xs font-bold">今日工作</span>
+                    <span className="text-xs font-bold">当日工作</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                     <span className="text-xl font-bold">{hoursToday}</span>
@@ -195,7 +209,7 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
                    {weekData.shiftMode === 'night' ? <Moon size={20} /> : <Sun size={20} />}
                </div>
                <div>
-                   <h3 className="font-bold text-gray-800 text-sm">今日工时登记</h3>
+                   <h3 className="font-bold text-gray-800 text-sm">{viewingDateStr === formatDateKey(new Date()) ? '今日' : '补录'}工时登记</h3>
                    <p className="text-xs text-gray-400">时薪 ¥{currentHourlyRate}</p>
                </div>
            </div>
@@ -246,15 +260,15 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
             <Plus className="w-5 h-5 text-blue-500" />
-            记一笔支出
+            {viewingDateStr === formatDateKey(new Date()) ? '记一笔支出' : `补录 ${month}月${day}日 支出`}
         </h3>
         
-        {isTodaySunday ? (
+        {isViewingDateSunday ? (
             <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
                 <div>
-                    <p className="text-sm font-bold">今天是周日结算日</p>
-                    <p className="text-xs mt-1 opacity-80">日常餐补仅限周一至周六。今日消费将全额计入额外支出。</p>
+                    <p className="text-sm font-bold">周日结算日</p>
+                    <p className="text-xs mt-1 opacity-80">日常餐补仅限周一至周六。消费将全额计入额外支出。</p>
                 </div>
             </div>
         ) : weekData.hourlyRate <= 0 ? (
@@ -329,10 +343,12 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
 
       {/* 5. Today's List */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-         <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider text-gray-400">今日消费明细</h3>
+         <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider text-gray-400">
+             {viewingDateStr === formatDateKey(new Date()) ? '今日' : `${day}日`}消费明细
+         </h3>
          {todayExpensesList.length === 0 ? (
              <div className="text-center py-8 text-gray-400 text-sm">
-                 今日暂无消费
+                 暂无消费
              </div>
          ) : (
              <div>
