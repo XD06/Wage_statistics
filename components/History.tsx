@@ -2,21 +2,21 @@ import React, { useState, useMemo } from 'react';
 import { AppState } from '../types';
 import { getWeekRangeDisplay } from '../services/dateService';
 import { WEEK_DAYS } from '../constants';
-import ExpenseItem from './ExpenseItem';
+import DailyDetail from './DailyDetail';
 import { ChevronDown, ChevronRight, Download, Calendar } from 'lucide-react';
 import { exportData } from '../services/storageService';
 
 interface Props {
   data: AppState;
   onDeleteExpense: (weekKey: string, expenseId: string) => void;
+  onUpdateHistoryHours: (weekKey: string, dateStr: string, hours: number) => void;
 }
 
-const History: React.FC<Props> = ({ data, onDeleteExpense }) => {
+const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours }) => {
   // 1. Group Weeks by Month
   const weeksByMonth = useMemo(() => {
       const groups: Record<string, string[]> = {};
       Object.keys(data.weeks).sort((a, b) => b.localeCompare(a)).forEach(weekKey => {
-          // weekKey is YYYY-MM-DD. Extract YYYY-MM
           const monthKey = weekKey.substring(0, 7);
           if (!groups[monthKey]) groups[monthKey] = [];
           groups[monthKey].push(weekKey);
@@ -26,9 +26,11 @@ const History: React.FC<Props> = ({ data, onDeleteExpense }) => {
 
   const sortedMonths = Object.keys(weeksByMonth).sort((a, b) => b.localeCompare(a));
 
-  // State
+  // View Navigation State
+  const [selectedDay, setSelectedDay] = useState<{weekKey: string, dateStr: string} | null>(null);
+
+  // Expanded State
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>(() => {
-      // Default expand the first month
       const first = sortedMonths[0];
       return first ? { [first]: true } : {};
   });
@@ -37,6 +39,20 @@ const History: React.FC<Props> = ({ data, onDeleteExpense }) => {
 
   const toggleMonth = (m: string) => setExpandedMonths(prev => ({ ...prev, [m]: !prev[m] }));
   const toggleWeek = (w: string) => setExpandedWeeks(prev => ({ ...prev, [w]: !prev[w] }));
+
+  // If a day is selected, show the detail view
+  if (selectedDay) {
+      return (
+          <DailyDetail 
+              weekKey={selectedDay.weekKey} 
+              dateStr={selectedDay.dateStr} 
+              data={data}
+              onBack={() => setSelectedDay(null)}
+              onUpdateHistoryHours={onUpdateHistoryHours}
+              onDeleteExpense={onDeleteExpense}
+          />
+      );
+  }
 
   return (
     <div className="pb-24 space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
@@ -60,29 +76,17 @@ const History: React.FC<Props> = ({ data, onDeleteExpense }) => {
            const weekKeys = weeksByMonth[monthKey];
            const isMonthExpanded = expandedMonths[monthKey];
 
-           // Calculate Month Totals for preview
+           // Calculate Month Totals
            let monthWage = 0;
            let monthNet = 0;
            weekKeys.forEach(wk => {
                const wd = data.weeks[wk];
                const totalHours = Object.values(wd.dailyHours || {}).reduce((s, h) => s + h, 0);
                const wage = totalHours * (wd.hourlyRate || 0);
-               
-               // Calculate Daily Excess strictly
-               const expensesByDate: Record<string, number> = {};
-               wd.expenses.forEach(e => {
-                   expensesByDate[e.dateStr] = (expensesByDate[e.dateStr] || 0) + e.amount;
-               });
-               let weekExcess = 0;
-               const dailySubsidy = wd.budget / 6;
-               Object.entries(expensesByDate).forEach(([dateStr, spent]) => {
-                  const dateObj = new Date(dateStr);
-                  const limit = dateObj.getDay() === 0 ? 0 : dailySubsidy;
-                  weekExcess += Math.max(0, spent - limit);
-               });
-
+               const totalSpent = wd.expenses.reduce((s, e) => s + e.amount, 0);
+               const excess = Math.max(0, totalSpent - wd.budget);
                monthWage += wage;
-               monthNet += (wage - weekExcess);
+               monthNet += (wage - excess);
            });
 
            return (
@@ -115,30 +119,17 @@ const History: React.FC<Props> = ({ data, onDeleteExpense }) => {
                                const rangeStr = getWeekRangeDisplay(weekKey);
                                const isWeekExpanded = expandedWeeks[weekKey];
                                
-                               // Week Calcs
                                const totalHours = Object.values(weekData.dailyHours || {}).reduce((s, h) => s + h, 0);
                                const wage = totalHours * (weekData.hourlyRate || 0);
-                               
-                               // Calculate Daily Excess strictly for the specific week
-                               const expensesByDate: Record<string, number> = {};
-                               const groupedExpensesList: Record<string, typeof weekData.expenses> = {};
-                               
-                               weekData.expenses.forEach(e => {
-                                   expensesByDate[e.dateStr] = (expensesByDate[e.dateStr] || 0) + e.amount;
-                                   if (!groupedExpensesList[e.dateStr]) groupedExpensesList[e.dateStr] = [];
-                                   groupedExpensesList[e.dateStr].push(e);
-                               });
-                               
-                               let weekExcess = 0;
-                               const dailySubsidy = weekData.budget / 6;
-                               Object.entries(expensesByDate).forEach(([dateStr, spent]) => {
-                                  const dateObj = new Date(dateStr);
-                                  const limit = dateObj.getDay() === 0 ? 0 : dailySubsidy;
-                                  weekExcess += Math.max(0, spent - limit);
-                               });
-
+                               const totalSpent = weekData.expenses.reduce((s, e) => s + e.amount, 0);
+                               const weekExcess = Math.max(0, totalSpent - weekData.budget);
                                const netIncome = wage - weekExcess;
-                               const sortedDates = Object.keys(groupedExpensesList).sort((a, b) => b.localeCompare(a));
+
+                               // Collect all dates that have data
+                               const datesWithData = new Set<string>();
+                               weekData.expenses.forEach(e => datesWithData.add(e.dateStr));
+                               Object.keys(weekData.dailyHours || {}).forEach(d => datesWithData.add(d));
+                               const sortedDates = Array.from(datesWithData).sort((a, b) => b.localeCompare(a));
 
                                return (
                                    <div key={weekKey} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -147,7 +138,10 @@ const History: React.FC<Props> = ({ data, onDeleteExpense }) => {
                                           className="w-full p-4 hover:bg-gray-50 transition-colors"
                                        >
                                            <div className="flex justify-between items-start mb-2">
-                                               <span className="font-bold text-gray-800 text-sm">{rangeStr}</span>
+                                               <span className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                                                   {rangeStr}
+                                                   {weekData.shiftMode === 'night' && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 rounded">晚班</span>}
+                                               </span>
                                                {isWeekExpanded ? <ChevronDown size={16} className="text-gray-400"/> : <ChevronRight size={16} className="text-gray-400"/>}
                                            </div>
                                            <div className="flex justify-between items-center bg-gray-50 p-3 rounded-xl">
@@ -166,39 +160,53 @@ const History: React.FC<Props> = ({ data, onDeleteExpense }) => {
                                                     <p className={`font-bold ${weekExcess > 0 ? 'text-orange-600' : 'text-green-600'}`}>¥{netIncome.toFixed(0)}</p>
                                                 </div>
                                            </div>
-                                           {weekExcess > 0 && (
-                                               <p className="text-xs text-red-400 mt-2 text-right">已扣除餐费超支 ¥{weekExcess.toFixed(1)}</p>
-                                           )}
                                        </button>
 
                                        {isWeekExpanded && (
-                                           <div className="border-t border-gray-100 p-4 bg-white">
+                                           <div className="border-t border-gray-100 bg-white">
                                                {sortedDates.length === 0 ? (
-                                                   <p className="text-center text-sm text-gray-400">本周无消费记录</p>
-                                               ) : sortedDates.map(dateStr => {
-                                                   const dayExpenses = groupedExpensesList[dateStr];
-                                                   const dayTotal = dayExpenses.reduce((s, e) => s + e.amount, 0);
-                                                   const dateObj = new Date(dateStr);
-                                                   const dayLabel = WEEK_DAYS[dateObj.getDay()];
-                                                   const hoursWorked = weekData.dailyHours?.[dateStr] || 0;
+                                                   <p className="text-center text-sm text-gray-400 py-4">本周无记录</p>
+                                               ) : (
+                                                   <div>
+                                                       {sortedDates.map(dateStr => {
+                                                           const dateObj = new Date(dateStr);
+                                                           const dayLabel = WEEK_DAYS[dateObj.getDay()];
+                                                           const hoursWorked = weekData.dailyHours?.[dateStr] || 0;
+                                                           const dayExpenses = weekData.expenses.filter(e => e.dateStr === dateStr);
+                                                           const dayTotal = dayExpenses.reduce((s, e) => s + e.amount, 0);
 
-                                                   return (
-                                                       <div key={dateStr} className="mb-4 last:mb-0">
-                                                           <div className="flex justify-between items-center mb-2 bg-blue-50/50 p-2 rounded-lg">
-                                                               <div className="flex items-center gap-2">
-                                                                   <span className="font-bold text-gray-700 text-sm">{dateObj.getMonth()+1}.{dateObj.getDate()} {dayLabel}</span>
-                                                                   {hoursWorked > 0 && (
-                                                                       <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">工 {hoursWorked}h</span>
-                                                                   )}
-                                                               </div>
-                                                               <span className="text-xs font-bold text-gray-500">消费 ¥{dayTotal.toFixed(1)}</span>
-                                                           </div>
-                                                           {dayExpenses.map(e => (
-                                                               <ExpenseItem key={e.id} expense={e} onDelete={() => onDeleteExpense(weekKey, e.id)} />
-                                                           ))}
-                                                       </div>
-                                                   );
-                                               })}
+                                                           return (
+                                                               <button 
+                                                                 key={dateStr}
+                                                                 onClick={() => setSelectedDay({weekKey, dateStr})}
+                                                                 className="w-full flex items-center justify-between p-4 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
+                                                               >
+                                                                   <div className="flex items-center gap-3">
+                                                                       <div className="bg-gray-100 text-gray-600 font-bold text-xs w-10 h-10 rounded-xl flex flex-col items-center justify-center">
+                                                                           <span>{dateObj.getMonth() + 1}.{dateObj.getDate()}</span>
+                                                                       </div>
+                                                                       <div className="text-left">
+                                                                           <div className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                                                               {dayLabel}
+                                                                               {hoursWorked > 0 && <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded">工 {hoursWorked}h</span>}
+                                                                           </div>
+                                                                           <div className="text-xs text-gray-400 mt-0.5">
+                                                                               {dayExpenses.length} 笔支出
+                                                                           </div>
+                                                                       </div>
+                                                                   </div>
+                                                                   
+                                                                   <div className="flex items-center gap-2">
+                                                                       <div className="text-right">
+                                                                           <p className="text-sm font-bold text-gray-800">-¥{dayTotal.toFixed(1)}</p>
+                                                                       </div>
+                                                                       <ChevronRight size={16} className="text-gray-300" />
+                                                                   </div>
+                                                               </button>
+                                                           );
+                                                       })}
+                                                   </div>
+                                               )}
                                            </div>
                                        )}
                                    </div>

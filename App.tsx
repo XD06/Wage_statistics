@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { LayoutDashboard, History as HistoryIcon, Upload } from 'lucide-react';
-import { AppState, Category, Expense, WeekData, STORAGE_KEY } from './types';
+import { AppState, Category, Expense, WeekData, STORAGE_KEY, ShiftMode } from './types';
 import { loadData, saveData } from './services/storageService';
 import { formatTime, getMonday, formatDateKey, isSunday } from './services/dateService';
 import Dashboard from './components/Dashboard';
@@ -34,8 +34,9 @@ const App: React.FC = () => {
             ...prev.weeks,
             [currentWeekKey]: {
               weekStartDate: currentWeekKey,
-              budget: prev.currentBudgetSetting, // Inherit last set subsidy
-              hourlyRate: prev.currentHourlyRateSetting || 0, // Inherit last set rate
+              budget: prev.currentBudgetSetting, 
+              hourlyRate: prev.currentHourlyRateSetting || 0,
+              shiftMode: prev.currentShiftSetting || 'day', // Inherit setting
               dailyHours: {},
               expenses: []
             }
@@ -50,17 +51,19 @@ const App: React.FC = () => {
     saveData(data);
   }, [data]);
 
-  const handleSetSettings = (budget: number, hourlyRate: number) => {
+  const handleSetSettings = (budget: number, hourlyRate: number, shift: ShiftMode) => {
     setData(prev => ({
       ...prev,
       currentBudgetSetting: budget, 
       currentHourlyRateSetting: hourlyRate,
+      currentShiftSetting: shift,
       weeks: {
         ...prev.weeks,
         [currentWeekKey]: {
           ...prev.weeks[currentWeekKey],
           budget: budget,
-          hourlyRate: hourlyRate
+          hourlyRate: hourlyRate,
+          shiftMode: shift
         }
       }
     }));
@@ -85,19 +88,53 @@ const App: React.FC = () => {
       });
   };
 
+  const handleUpdateHistoryHours = (weekKey: string, dateStr: string, hours: number) => {
+      setData(prev => ({
+          ...prev,
+          weeks: {
+              ...prev.weeks,
+              [weekKey]: {
+                  ...prev.weeks[weekKey],
+                  dailyHours: {
+                      ...prev.weeks[weekKey].dailyHours,
+                      [dateStr]: hours
+                  }
+              }
+          }
+      }));
+  };
+
   const handleAddExpense = (amount: number, category: Category | null, note: string, time: string) => {
     const expenseDate = new Date();
     const [hours, mins] = time.split(':').map(Number);
     expenseDate.setHours(hours, mins);
 
+    const currentWeekData = data.weeks[currentWeekKey];
+    const isNightShift = currentWeekData?.shiftMode === 'night';
+
     // Auto Categorization Logic
     let finalCategory = category;
     if (!finalCategory) {
       const h = hours + mins / 60;
-      if (h >= 7.5 && h <= 8.5) finalCategory = Category.Breakfast;
-      else if (h >= 11 && h <= 12) finalCategory = Category.Lunch;
-      else if (h >= 17 && h <= 18) finalCategory = Category.Dinner;
-      else finalCategory = Category.Other;
+      
+      if (isNightShift) {
+          // Night Shift Logic (Opposite roughly)
+          // "Breakfast" (Start of shift) ~ 7pm-9pm (19-21)
+          // "Lunch" (Mid shift) ~ 11pm-1am (23-1) or (23-25)
+          // "Dinner" (End of shift) ~ 6am-8am
+          
+          if (h >= 18.5 && h <= 21) finalCategory = Category.Breakfast; // "Start meal"
+          else if (h >= 23 || h <= 2) finalCategory = Category.Lunch;   // "Mid meal"
+          else if (h >= 6 && h <= 8) finalCategory = Category.Dinner;   // "End meal"
+          else finalCategory = Category.Other;
+
+      } else {
+          // Day Shift Logic
+          if (h >= 7.5 && h <= 8.5) finalCategory = Category.Breakfast;
+          else if (h >= 11 && h <= 12) finalCategory = Category.Lunch;
+          else if (h >= 17 && h <= 18) finalCategory = Category.Dinner;
+          else finalCategory = Category.Other;
+      }
     }
 
     const newExpense: Expense = {
@@ -110,10 +147,11 @@ const App: React.FC = () => {
     };
 
     setData(prev => {
-      const currentWeekData = prev.weeks[currentWeekKey] || {
+      const week = prev.weeks[currentWeekKey] || {
         weekStartDate: currentWeekKey,
         budget: prev.currentBudgetSetting,
         hourlyRate: prev.currentHourlyRateSetting || 0,
+        shiftMode: prev.currentShiftSetting || 'day',
         dailyHours: {},
         expenses: []
       };
@@ -123,8 +161,8 @@ const App: React.FC = () => {
         weeks: {
           ...prev.weeks,
           [currentWeekKey]: {
-            ...currentWeekData,
-            expenses: [newExpense, ...currentWeekData.expenses]
+            ...week,
+            expenses: [newExpense, ...week.expenses]
           }
         }
       };
@@ -173,6 +211,7 @@ const App: React.FC = () => {
     weekStartDate: currentWeekKey,
     budget: 0,
     hourlyRate: 0,
+    shiftMode: 'day',
     dailyHours: {},
     expenses: []
   };
@@ -209,6 +248,7 @@ const App: React.FC = () => {
                 <History 
                     data={data}
                     onDeleteExpense={handleDeleteExpense}
+                    onUpdateHistoryHours={handleUpdateHistoryHours}
                 />
             )}
         </main>
@@ -236,6 +276,7 @@ const App: React.FC = () => {
             onClose={() => setIsBudgetModalOpen(false)} 
             currentBudget={currentWeekData.budget}
             currentHourlyRate={currentWeekData.hourlyRate || 0}
+            currentShift={currentWeekData.shiftMode || 'day'}
             onSave={handleSetSettings}
         />
 

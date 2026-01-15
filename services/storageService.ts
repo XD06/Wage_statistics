@@ -1,8 +1,9 @@
 import { AppState, STORAGE_KEY, WeekData } from '../types';
 
 const INITIAL_STATE: AppState = {
-  currentBudgetSetting: 168, // Default ~28/day for 6 days
+  currentBudgetSetting: 168, 
   currentHourlyRateSetting: 0,
+  currentShiftSetting: 'day',
   weeks: {}
 };
 
@@ -12,15 +13,16 @@ export const loadData = (): AppState => {
     if (!raw) return INITIAL_STATE;
     const data = JSON.parse(raw);
     
-    // Migration helper: ensure new fields exist if loading old data
-    if (data.currentHourlyRateSetting === undefined) {
-      data.currentHourlyRateSetting = 0;
-    }
-    // Iterate weeks to ensure migration
+    // Migration helper
+    if (data.currentHourlyRateSetting === undefined) data.currentHourlyRateSetting = 0;
+    if (data.currentShiftSetting === undefined) data.currentShiftSetting = 'day';
+    
+    // Migrate weeks
     if (data.weeks) {
        Object.keys(data.weeks).forEach(key => {
           if (data.weeks[key].hourlyRate === undefined) data.weeks[key].hourlyRate = 0;
           if (data.weeks[key].dailyHours === undefined) data.weeks[key].dailyHours = {};
+          if (data.weeks[key].shiftMode === undefined) data.weeks[key].shiftMode = 'day';
        });
     }
 

@@ -1,24 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { X, DollarSign, Clock } from 'lucide-react';
+import { X, DollarSign, Clock, Moon, Sun } from 'lucide-react';
+import { ShiftMode } from '../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   currentBudget: number;
   currentHourlyRate: number;
-  onSave: (budget: number, hourlyRate: number) => void;
+  currentShift: ShiftMode;
+  onSave: (budget: number, hourlyRate: number, shift: ShiftMode) => void;
 }
 
-const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentHourlyRate, onSave }) => {
+const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentHourlyRate, currentShift, onSave }) => {
   const [budgetVal, setBudgetVal] = useState('');
   const [rateVal, setRateVal] = useState('');
+  const [shiftVal, setShiftVal] = useState<ShiftMode>('day');
 
   useEffect(() => {
     if (isOpen) {
-      setBudgetVal(currentBudget > 0 ? currentBudget.toString() : '');
+      setBudgetVal(currentBudget > 0 ? currentBudget.toString() : '168');
       setRateVal(currentHourlyRate > 0 ? currentHourlyRate.toString() : '');
+      setShiftVal(currentShift || 'day');
     }
-  }, [isOpen, currentBudget, currentHourlyRate]);
+  }, [isOpen, currentBudget, currentHourlyRate, currentShift]);
+
+  // Auto-set rate when shift changes to Night, but allow override if user insists (though prompt says 23)
+  const handleShiftChange = (mode: ShiftMode) => {
+      setShiftVal(mode);
+      if (mode === 'night') {
+          setRateVal('23');
+      }
+  };
 
   if (!isOpen) return null;
 
@@ -36,7 +48,7 @@ const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentH
       return;
     }
 
-    onSave(b, r);
+    onSave(b, r, shiftVal);
     onClose();
   };
 
@@ -51,6 +63,32 @@ const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentH
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           
+          {/* Shift Selection */}
+          <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">当前班次模式</label>
+              <div className="flex bg-gray-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => handleShiftChange('day')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${shiftVal === 'day' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                      <Sun size={16} />
+                      白班
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleShiftChange('night')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${shiftVal === 'night' ? 'bg-gray-800 text-indigo-300 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                      <Moon size={16} />
+                      晚班
+                  </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                  {shiftVal === 'day' ? '白班模式：自定义时薪，常规就餐时间分类。' : '晚班模式：建议时薪 ¥23，日夜颠倒的就餐分类。'}
+              </p>
+          </div>
+
           {/* Hourly Rate */}
           <div>
             <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
@@ -67,7 +105,9 @@ const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentH
                 className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900"
               />
             </div>
-            <p className="text-xs text-gray-400 mt-1">用于计算每日和每周的工资收入</p>
+            {shiftVal === 'night' && rateVal !== '23' && (
+                <p className="text-xs text-orange-500 mt-1">注意：晚班标准时薪通常为 ¥23</p>
+            )}
           </div>
 
           {/* Subsidy */}
@@ -86,13 +126,8 @@ const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentH
                 className="w-full px-4 py-3 bg-green-50 border border-green-100 rounded-xl focus:ring-2 focus:ring-green-500 outline-none text-xl font-bold text-gray-900"
               />
             </div>
-            <p className="text-xs text-gray-500 mt-2 flex justify-between">
-              <span>平均日补 (按6天)：</span>
-              {budgetVal && !isNaN(parseFloat(budgetVal)) ? (
-                <span className="text-green-600 font-bold">
-                  ¥{(parseFloat(budgetVal) / 6).toFixed(1)} / 天
-                </span>
-              ) : '--'}
+            <p className="text-xs text-gray-500 mt-2">
+              按周累计结算。本周总消费超过此金额部分将从工资扣除。
             </p>
           </div>
 

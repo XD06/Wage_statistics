@@ -14,18 +14,22 @@ export interface Expense {
   dateStr: string; // YYYY-MM-DD for grouping
 }
 
+export type ShiftMode = 'day' | 'night';
+
 export interface WeekData {
   weekStartDate: string; // Monday's date YYYY-MM-DD
-  budget: number; // Now acts as "Weekly Meal Subsidy"
-  hourlyRate: number; // New: Hourly wage for this week
-  dailyHours: Record<string, number>; // New: Key is dateStr, Value is hours worked
+  budget: number; // Weekly Meal Subsidy (e.g., 168)
+  hourlyRate: number; // Hourly wage
+  shiftMode: ShiftMode; // New: 'day' or 'night'
+  dailyHours: Record<string, number>; // Key is dateStr, Value is hours worked
   expenses: Expense[];
 }
 
 export interface AppState {
-  currentBudgetSetting: number; // Default meal subsidy
-  currentHourlyRateSetting: number; // New: Default hourly rate
-  weeks: Record<string, WeekData>; // Keyed by Monday's YYYY-MM-DD
+  currentBudgetSetting: number; 
+  currentHourlyRateSetting: number; 
+  currentShiftSetting: ShiftMode; // New: Default shift preference
+  weeks: Record<string, WeekData>; 
 }
 
-export const STORAGE_KEY = 'weekly_keeper_data_v2'; // Bump version
+export const STORAGE_KEY = 'weekly_keeper_data_v3'; // Bump version

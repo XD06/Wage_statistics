@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Category, Expense, WeekData } from '../types';
-import { CATEGORY_CONFIG } from '../constants';
+import { CATEGORY_CONFIG, WEEK_DAYS } from '../constants';
 import { formatTime, isSunday } from '../services/dateService';
 import ExpenseItem from './ExpenseItem';
-import { AlertTriangle, Plus, Settings, Briefcase, Wallet, Timer } from 'lucide-react';
+import { AlertTriangle, Plus, Settings, Briefcase, Wallet, Timer, Moon, Sun, Calendar } from 'lucide-react';
 
 interface Props {
   weekData: WeekData;
@@ -18,6 +18,12 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
   const todayStr = today.toISOString().split('T')[0];
   const isTodaySunday = isSunday(today);
 
+  // Date Display Logic
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const day = today.getDate();
+  const weekDay = WEEK_DAYS[today.getDay()];
+
   // Form State for Expense
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -28,7 +34,6 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
   const [todayHours, setTodayHours] = useState<string>('');
 
   useEffect(() => {
-     // Initialize hours input from data
      const savedHours = weekData.dailyHours?.[todayStr];
      if (savedHours !== undefined) {
          setTodayHours(savedHours.toString());
@@ -38,8 +43,6 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
   }, [weekData.dailyHours, todayStr]);
 
   // --- Calculations ---
-
-  // 1. Time & Wages
   const currentHourlyRate = weekData.hourlyRate || 0;
   const hoursToday = parseFloat(todayHours) || 0;
   const wageToday = hoursToday * currentHourlyRate;
@@ -47,38 +50,22 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
   const totalWeekHours = Object.values(weekData.dailyHours || {}).reduce((sum, h) => sum + h, 0);
   const wageWeekTotal = totalWeekHours * currentHourlyRate;
 
-  // 2. Expenses & Subsidy
-  const dailySubsidy = weekData.budget / 6;
-  
+  // Expenses
   const todayExpensesList = useMemo(() => 
     weekData.expenses.filter(e => e.dateStr === todayStr).sort((a, b) => b.timestamp - a.timestamp),
   [weekData.expenses, todayStr]);
 
   const todaySpent = todayExpensesList.reduce((sum, e) => sum + e.amount, 0);
-  
-  // 3. Logic: Net Income (Strict Daily Deduction)
-  // Instead of checking if Total Week Spend > Total Week Budget,
-  // We check each day individually. If Day 1 is over budget, it penalizes the income immediately,
-  // even if Day 2 is under budget.
-  
-  // Calculate Cumulative Daily Excess for the whole week
-  const expensesByDate: Record<string, number> = {};
-  weekData.expenses.forEach(e => {
-      expensesByDate[e.dateStr] = (expensesByDate[e.dateStr] || 0) + e.amount;
-  });
+  const weekSpent = weekData.expenses.reduce((sum, e) => sum + e.amount, 0);
 
-  let weekExcess = 0;
-  Object.entries(expensesByDate).forEach(([dateStr, spent]) => {
-      const dateObj = new Date(dateStr);
-      // If it's Sunday (0), budget is 0 (all spend is excess), else dailySubsidy
-      const limit = dateObj.getDay() === 0 ? 0 : dailySubsidy;
-      weekExcess += Math.max(0, spent - limit);
-  });
-
+  // --- New Logic: Weekly Aggregate Subsidy ---
+  // Requirement: "Daily exceed 28 does not deduct. Only if WEEKLY cumulative > WEEKLY subsidy."
+  const weekBudget = weekData.budget;
+  const weekExcess = Math.max(0, weekSpent - weekBudget);
   const weekNetIncome = wageWeekTotal - weekExcess;
 
-  // Today's Excess (for display)
-  const todayExcess = Math.max(0, todaySpent - (isTodaySunday ? 0 : dailySubsidy));
+  // For visual progress bar only (Daily Reference)
+  const dailyReference = weekBudget / 6;
 
   const handleExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,21 +91,57 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
   return (
     <div className="pb-24 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
+      {/* 0. Calendar Header */}
+      <div className="flex items-center justify-between px-1 pt-2">
+          <div>
+              <div className="flex items-baseline gap-2">
+                  <h1 className="text-3xl font-extrabold text-gray-900">{day}日</h1>
+                  <span className="text-sm font-bold text-gray-500">{weekDay}</span>
+              </div>
+              <p className="text-xs font-medium text-gray-400">{year}年{month}月</p>
+          </div>
+          
+          <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 shadow-sm ${isTodaySunday ? 'bg-yellow-50 border-yellow-100 text-yellow-700' : 'bg-white border-gray-100 text-gray-600'}`}>
+              <Calendar size={16} className={isTodaySunday ? "text-yellow-600" : "text-gray-400"} />
+              <div className="text-right">
+                  <p className="text-[10px] font-bold leading-tight">{isTodaySunday ? '本周结算' : '正常工作'}</p>
+                  <p className="text-[8px] opacity-80 leading-tight">
+                      {isTodaySunday ? 'Rest Day' : 'Work Day'}
+                  </p>
+              </div>
+          </div>
+      </div>
+
       {/* 1. Overview Card (Income & Net) */}
-      <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 shadow-lg text-white relative overflow-hidden">
-        {/* Decorative Circles */}
-        <div className="absolute top-[-20px] right-[-20px] w-32 h-32 bg-white/5 rounded-full blur-2xl"></div>
-        <div className="absolute bottom-[-20px] left-[-20px] w-24 h-24 bg-blue-500/10 rounded-full blur-xl"></div>
+      <div className={`rounded-3xl p-6 shadow-lg text-white relative overflow-hidden transition-colors duration-500 ${weekData.shiftMode === 'night' ? 'bg-gradient-to-br from-indigo-950 to-slate-900' : 'bg-gradient-to-br from-gray-900 to-gray-800'}`}>
+        
+        {/* Theme Decoration */}
+        {weekData.shiftMode === 'night' ? (
+           <>
+             <div className="absolute top-4 right-4 text-white/10"><Moon size={120} /></div>
+             <div className="absolute bottom-[-20px] left-[-20px] w-24 h-24 bg-indigo-500/20 rounded-full blur-xl"></div>
+           </>
+        ) : (
+           <>
+             <div className="absolute top-[-20px] right-[-20px] w-32 h-32 bg-white/5 rounded-full blur-2xl"></div>
+             <div className="absolute bottom-[-20px] left-[-20px] w-24 h-24 bg-orange-500/10 rounded-full blur-xl"></div>
+           </>
+        )}
 
         <div className="flex justify-between items-start mb-6 relative z-10">
           <div>
-            <h2 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">本周实际净收入 (扣除超支)</h2>
+            <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-gray-400 text-xs font-medium uppercase tracking-wider">本周净收入</h2>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${weekData.shiftMode === 'night' ? 'border-indigo-400 text-indigo-300' : 'border-orange-400 text-orange-300'}`}>
+                    {weekData.shiftMode === 'night' ? '晚班' : '白班'}
+                </span>
+            </div>
             <div className="text-4xl font-extrabold tracking-tight">
               ¥{weekNetIncome.toFixed(0)}
             </div>
             {weekExcess > 0 && (
                 <div className="text-red-400 text-xs mt-1 font-medium bg-red-900/30 px-2 py-1 rounded-md inline-block">
-                    已扣除餐费超支 ¥{weekExcess.toFixed(1)}
+                    本周总超支 ¥{weekExcess.toFixed(1)} (已扣除)
                 </div>
             )}
           </div>
@@ -133,7 +156,7 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
         <div className="grid grid-cols-2 gap-3 relative z-10">
             {/* Today's Stats */}
             <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-md border border-white/5">
-                <div className="flex items-center gap-1.5 mb-2 text-blue-200">
+                <div className={`flex items-center gap-1.5 mb-2 ${weekData.shiftMode === 'night' ? 'text-indigo-200' : 'text-blue-200'}`}>
                     <Briefcase size={14} />
                     <span className="text-xs font-bold">今日工作</span>
                 </div>
@@ -168,8 +191,8 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
       {/* 2. Work Log Section */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center justify-between">
            <div className="flex items-center gap-3">
-               <div className="bg-blue-50 p-2.5 rounded-full text-blue-600">
-                   <Timer size={20} />
+               <div className={`p-2.5 rounded-full ${weekData.shiftMode === 'night' ? 'bg-indigo-50 text-indigo-600' : 'bg-orange-50 text-orange-600'}`}>
+                   {weekData.shiftMode === 'night' ? <Moon size={20} /> : <Sun size={20} />}
                </div>
                <div>
                    <h3 className="font-bold text-gray-800 text-sm">今日工时登记</h3>
@@ -190,30 +213,33 @@ const Dashboard: React.FC<Props> = ({ weekData, onAddExpense, onDeleteExpense, o
            </div>
       </div>
 
-      {/* 3. Expense/Subsidy Status */}
+      {/* 3. Expense/Subsidy Status (Weekly Aggregate) */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-gray-800 text-sm">今日餐补使用情况</h3>
+              <h3 className="font-bold text-gray-800 text-sm">本周餐补进度</h3>
               <span className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded-lg font-bold">
-                  日补 ¥{dailySubsidy.toFixed(0)}
+                  总预算 ¥{weekBudget}
               </span>
           </div>
           
-          <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
+          <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden mb-2">
               <div 
-                className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${todaySpent > dailySubsidy ? 'bg-red-500' : 'bg-green-500'}`}
-                style={{ width: `${Math.min(100, (todaySpent / dailySubsidy) * 100)}%` }}
+                className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${weekSpent > weekBudget ? 'bg-red-500' : 'bg-green-500'}`}
+                style={{ width: `${Math.min(100, (weekSpent / weekBudget) * 100)}%` }}
               ></div>
           </div>
           
-          <div className="flex justify-between text-xs">
-              <span className="text-gray-500">已用 ¥{todaySpent.toFixed(1)}</span>
-              {todaySpent > dailySubsidy ? (
-                  <span className="text-red-600 font-bold">超支 ¥{(todaySpent - dailySubsidy).toFixed(1)} (扣工资)</span>
+          <div className="flex justify-between text-xs mt-2">
+              <span className="text-gray-500">已用 ¥{weekSpent.toFixed(1)}</span>
+              {weekSpent > weekBudget ? (
+                  <span className="text-red-600 font-bold">已超支 ¥{(weekSpent - weekBudget).toFixed(1)} (从工资扣除)</span>
               ) : (
-                  <span className="text-green-600 font-bold">剩余 ¥{(dailySubsidy - todaySpent).toFixed(1)}</span>
+                  <span className="text-green-600 font-bold">剩余 ¥{(weekBudget - weekSpent).toFixed(1)}</span>
               )}
           </div>
+          <p className="text-[10px] text-gray-400 mt-2 text-center">
+              * 当日超支不会立即扣款，仅当本周累计消费超过 ¥{weekBudget} 时扣除。
+          </p>
       </div>
 
       {/* 4. Add Expense Form */}
