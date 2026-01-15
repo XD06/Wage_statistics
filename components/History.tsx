@@ -3,19 +3,38 @@ import { AppState } from '../types';
 import { getWeekRangeDisplay } from '../services/dateService';
 import { WEEK_DAYS } from '../constants';
 import DailyDetail from './DailyDetail';
-import { ChevronDown, ChevronRight, Download, Calendar, TrendingUp } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Calendar, TrendingUp, Trash2 } from 'lucide-react';
 import { exportData } from '../services/storageService';
 
 interface Props {
   data: AppState;
   onDeleteExpense: (weekKey: string, expenseId: string) => void;
   onUpdateHistoryHours: (weekKey: string, dateStr: string, hours: number) => void;
+  onDeleteDay: (weekKey: string, dateStr: string) => void;
 }
 
-const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours }) => {
+const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours, onDeleteDay }) => {
+  // Filter and group weeks by month
   const weeksByMonth = useMemo(() => {
       const groups: Record<string, string[]> = {};
       Object.keys(data.weeks).sort((a, b) => b.localeCompare(a)).forEach(weekKey => {
+          const wd = data.weeks[weekKey];
+          
+          // --- Ghost Week Check ---
+          // A week is considered "active" only if it has meaningful data:
+          // 1. Has expenses
+          // 2. Has recorded work hours (> 0)
+          // 3. Has days marked as 'Work Day' (true) - implies subsidy entitlement
+          
+          const hasExpenses = wd.expenses && wd.expenses.length > 0;
+          const hasHours = wd.dailyHours && Object.values(wd.dailyHours).some(h => h > 0);
+          const hasWorkDays = wd.workDays && Object.values(wd.workDays).some(isWork => isWork === true);
+          
+          // If the week has absolutely no data, treat it as a "ghost record" and hide it
+          if (!hasExpenses && !hasHours && !hasWorkDays) {
+              return;
+          }
+
           const monthKey = weekKey.substring(0, 7);
           if (!groups[monthKey]) groups[monthKey] = [];
           groups[monthKey].push(weekKey);
@@ -137,9 +156,16 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
                                const weekExcess = Math.max(0, totalSpent - budget);
                                const netIncome = wage - weekExcess;
 
+                               // Collect dates that have ANY data (expenses, hours, OR are marked as work days)
                                const datesWithData = new Set<string>();
                                weekData.expenses.forEach(e => datesWithData.add(e.dateStr));
-                               Object.keys(weekData.dailyHours || {}).forEach(d => datesWithData.add(d));
+                               Object.keys(weekData.dailyHours || {}).forEach(d => {
+                                   if (weekData.dailyHours[d] > 0) datesWithData.add(d);
+                               });
+                               Object.keys(weekData.workDays || {}).forEach(d => {
+                                   if (weekData.workDays[d]) datesWithData.add(d);
+                               });
+                               
                                const sortedDates = Array.from(datesWithData).sort((a, b) => b.localeCompare(a));
 
                                return (
@@ -182,12 +208,13 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
                                                            const hoursWorked = weekData.dailyHours?.[dateStr] || 0;
                                                            const dayExpenses = weekData.expenses.filter(e => e.dateStr === dateStr);
                                                            const dayTotal = dayExpenses.reduce((s, e) => s + e.amount, 0);
+                                                           const isWorkDay = weekData.workDays?.[dateStr];
 
                                                            return (
-                                                               <button 
+                                                               <div 
                                                                  key={dateStr}
                                                                  onClick={() => setSelectedDay({weekKey, dateStr})}
-                                                                 className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors group/item"
+                                                                 className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors group/item cursor-pointer"
                                                                >
                                                                    <div className="flex items-center gap-3">
                                                                        <div className="text-left w-8">
@@ -198,6 +225,9 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
                                                                        <div className="text-left">
                                                                            <div className="text-xs font-bold text-gray-700 flex items-center gap-2">
                                                                                {dayLabel}
+                                                                               {isWorkDay && !hoursWorked && !dayTotal && (
+                                                                                   <span className="w-1.5 h-1.5 bg-orange-400 rounded-full" title="已标记为工作日"></span>
+                                                                               )}
                                                                            </div>
                                                                            {hoursWorked > 0 && <p className="text-[10px] text-blue-500 font-medium">工时 {hoursWorked}h</p>}
                                                                        </div>
@@ -205,9 +235,21 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
                                                                    
                                                                    <div className="flex items-center gap-2">
                                                                        {dayTotal > 0 && <span className="text-xs font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">-¥{dayTotal.toFixed(0)}</span>}
+                                                                       
+                                                                       <button 
+                                                                           onClick={(e) => {
+                                                                               e.stopPropagation();
+                                                                               onDeleteDay(weekKey, dateStr);
+                                                                           }}
+                                                                           className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover/item:opacity-100"
+                                                                           title="删除当天记录"
+                                                                       >
+                                                                           <Trash2 size={14} />
+                                                                       </button>
+
                                                                        <ChevronRight size={14} className="text-gray-200 group-hover/item:text-gray-400" />
                                                                    </div>
-                                                               </button>
+                                                               </div>
                                                            );
                                                        })}
                                                    </div>

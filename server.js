@@ -51,9 +51,17 @@ app.post('/api/data', async (req, res) => {
 });
 
 // Handle React Routing (return index.html for all non-API routes)
-// Use Regex /.*/ to match all routes, compatible with both Express 4 and 5
-app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// Using app.use() is the most robust way to handle 'all other requests' 
+// without running into path-to-regexp syntax differences between Express 4 and 5.
+// This fixes the "Missing parameter name at index 1: *" error.
+app.use((req, res) => {
+  // Only handle GET requests for HTML fallback
+  if (req.method === 'GET') {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  } else {
+    // For other methods or types that fell through, return 404
+    res.status(404).send('Not Found');
+  }
 });
 
 app.listen(PORT, () => {

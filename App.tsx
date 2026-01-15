@@ -232,6 +232,40 @@ const App: React.FC = () => {
       }));
   };
 
+  // Function to delete all data for a specific day (expenses, hours, and workday status)
+  const handleDeleteDay = (weekKey: string, dateStr: string) => {
+    if (!window.confirm("确定要删除这一整天的记录吗？\n(将清除工时、账单并取消工作日标记)")) return;
+
+    setData(prev => {
+        const week = prev.weeks[weekKey];
+        if (!week) return prev;
+
+        // 1. Remove expenses for the day
+        const newExpenses = week.expenses.filter(e => e.dateStr !== dateStr);
+        
+        // 2. Remove hours for the day
+        const newDailyHours = { ...week.dailyHours };
+        delete newDailyHours[dateStr];
+
+        // 3. Remove workday status (this removes the "block" from display if no other data exists)
+        const newWorkDays = { ...week.workDays };
+        delete newWorkDays[dateStr];
+
+        return {
+            ...prev,
+            weeks: {
+                ...prev.weeks,
+                [weekKey]: {
+                    ...week,
+                    expenses: newExpenses,
+                    dailyHours: newDailyHours,
+                    workDays: newWorkDays
+                }
+            }
+        };
+    });
+  };
+
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -320,6 +354,7 @@ const App: React.FC = () => {
                     data={data}
                     onDeleteExpense={handleDeleteExpense}
                     onUpdateHistoryHours={handleUpdateHistoryHours}
+                    onDeleteDay={handleDeleteDay}
                 />
             )}
         </main>
