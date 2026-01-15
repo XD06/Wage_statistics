@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sun, Moon, Cloud, Save, Download, CheckCircle, AlertCircle, Settings2 } from 'lucide-react';
+import { X, Sun, Moon, Cloud, Save, Download, CheckCircle, AlertCircle, Settings2, ShieldAlert } from 'lucide-react';
 import { ShiftMode, WebDAVConfig, AppState } from '../types';
 import { uploadToWebDAV, downloadFromWebDAV } from '../services/webdavService';
 
@@ -42,6 +42,11 @@ const BudgetModal: React.FC<Props> = ({
   const [davPass, setDavPass] = useState('');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [statusMsg, setStatusMsg] = useState('');
+
+  // Mixed Content Check
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const isHttpUrl = davUrl.trim().toLowerCase().startsWith('http:');
+  const showMixedContentWarning = isHttps && isHttpUrl;
 
   useEffect(() => {
     if (isOpen) {
@@ -243,8 +248,18 @@ const BudgetModal: React.FC<Props> = ({
                                 value={davUrl}
                                 onChange={e => setDavUrl(e.target.value)}
                                 placeholder="https://dav.jianguoyun.com/dav/"
-                                className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                className={`w-full px-4 py-3 rounded-xl text-sm font-medium focus:ring-2 outline-none transition-all ${showMixedContentWarning ? 'bg-red-50 focus:ring-red-500 text-red-900' : 'bg-gray-50 focus:bg-white focus:ring-blue-500'}`}
                             />
+                            {/* Mixed Content Warning Banner */}
+                            {showMixedContentWarning && (
+                                <div className="bg-red-50 text-red-700 p-3 rounded-xl text-xs flex items-start gap-2 mt-2 border border-red-100 animate-in fade-in slide-in-from-top-1">
+                                    <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+                                    <div>
+                                        <span className="font-bold block mb-0.5">协议不匹配 (Mixed Content)</span>
+                                        当前网页为 HTTPS，无法访问 HTTP 服务器。请使用 <span className="font-bold">https://</span> 开头的地址，或为服务器配置 SSL。
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div>
                             <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">账号 (Username)</label>
@@ -294,7 +309,7 @@ const BudgetModal: React.FC<Props> = ({
                             {syncStatus === 'loading' && <Settings2 size={14} className="animate-spin" />}
                             {syncStatus === 'success' && <CheckCircle size={14} />}
                             {syncStatus === 'error' && <AlertCircle size={14} />}
-                            {statusMsg}
+                            <span className="whitespace-pre-wrap">{statusMsg}</span>
                         </div>
                     )}
                 </div>
