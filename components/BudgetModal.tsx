@@ -144,12 +144,12 @@ const BudgetModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-white/20 flex flex-col max-h-[85vh]">
+      <form onSubmit={handleSubmit} className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-white/20 flex flex-col max-h-[85vh]">
         
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-gray-100 shrink-0">
           <h3 className="text-xl font-extrabold text-gray-900">设置</h3>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors">
+          <button type="button" onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -157,12 +157,14 @@ const BudgetModal: React.FC<Props> = ({
         {/* Tabs */}
         <div className="flex px-6 pt-4 gap-4 shrink-0">
             <button 
+                type="button"
                 onClick={() => setActiveTab('general')}
                 className={`flex-1 pb-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'general' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
             >
                 基础参数
             </button>
             <button 
+                type="button"
                 onClick={() => setActiveTab('cloud')}
                 className={`flex-1 pb-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'cloud' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-400'}`}
             >
@@ -319,14 +321,13 @@ const BudgetModal: React.FC<Props> = ({
         {/* Footer Actions */}
         <div className="p-6 pt-2 shrink-0 bg-white">
             <button
-                type="button"
-                onClick={handleSubmit}
+                type="submit"
                 className="w-full py-4 bg-black hover:bg-gray-900 text-white font-bold rounded-2xl transition-transform active:scale-95 shadow-xl"
             >
                 保存所有配置
             </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 };

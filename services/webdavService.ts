@@ -12,7 +12,9 @@ const getHeaders = (config: WebDAVConfig) => {
   const auth = utf8_to_b64(`${config.username}:${config.password}`);
   return {
     'Authorization': `Basic ${auth}`,
-    'Content-Type': 'application/json',
+    // OPTIMIZATION: Removed 'Content-Type': 'application/json'
+    // WebDAV servers usually ignore this for storage or detect via extension (.json).
+    // Removing it simplifies the CORS preflight check (fewer headers to validate).
   };
 };
 
@@ -52,10 +54,11 @@ export const uploadToWebDAV = async (data: AppState, config: WebDAVConfig): Prom
   } catch (error: any) {
     console.error('WebDAV Error:', error);
     if (error.message && error.message.includes('Mixed Content')) {
-        throw error; // Re-throw our custom error
+        throw error;
     }
     if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-       throw new Error('连接失败。可能原因：\n1. 跨域(CORS)被拒绝。\n2. 地址协议不匹配(HTTPS页面不能访问HTTP服务)。\n3. 服务器未响应。');
+       // Enhanced error message for Nginx/Panel CORS pitfalls
+       throw new Error('连接被中断 (Failed to fetch)。\n\n如果您使用宝塔/aaPanel，请注意 Nginx 的陷阱：\n如果 "反向代理" 配置文件内部有任何 add_header 指令，您在外部添加的 CORS 头会被直接忽略。\n\n解决办法：请将 CORS 配置直接粘贴到 Nginx 代理配置文件(proxy/*.conf)的内部，紧跟在 proxy_pass 下方。');
     }
     throw error;
   }
@@ -90,7 +93,7 @@ export const downloadFromWebDAV = async (config: WebDAVConfig): Promise<AppState
         throw error;
     }
     if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-       throw new Error('连接失败。可能原因：\n1. 跨域(CORS)被拒绝。\n2. 地址协议不匹配(HTTPS页面不能访问HTTP服务)。\n3. 服务器未响应。');
+       throw new Error('连接失败 (CORS)。请检查 Nginx 代理配置是否覆盖了 Access-Control-Allow-Headers 头。');
     }
     throw error;
   }
