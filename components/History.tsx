@@ -3,7 +3,7 @@ import { AppState } from '../types';
 import { getWeekRangeDisplay } from '../services/dateService';
 import { WEEK_DAYS } from '../constants';
 import DailyDetail from './DailyDetail';
-import { ChevronDown, ChevronRight, Download, Calendar } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Calendar, TrendingUp } from 'lucide-react';
 import { exportData } from '../services/storageService';
 
 interface Props {
@@ -13,7 +13,6 @@ interface Props {
 }
 
 const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours }) => {
-  // 1. Group Weeks by Month
   const weeksByMonth = useMemo(() => {
       const groups: Record<string, string[]> = {};
       Object.keys(data.weeks).sort((a, b) => b.localeCompare(a)).forEach(weekKey => {
@@ -25,11 +24,8 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
   }, [data.weeks]);
 
   const sortedMonths = Object.keys(weeksByMonth).sort((a, b) => b.localeCompare(a));
-
-  // View Navigation State
   const [selectedDay, setSelectedDay] = useState<{weekKey: string, dateStr: string} | null>(null);
 
-  // Expanded State
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>(() => {
       const first = sortedMonths[0];
       return first ? { [first]: true } : {};
@@ -40,7 +36,6 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
   const toggleMonth = (m: string) => setExpandedMonths(prev => ({ ...prev, [m]: !prev[m] }));
   const toggleWeek = (w: string) => setExpandedWeeks(prev => ({ ...prev, [w]: !prev[w] }));
 
-  // If a day is selected, show the detail view
   if (selectedDay) {
       return (
           <DailyDetail 
@@ -55,20 +50,28 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
   }
 
   return (
-    <div className="pb-24 space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
-       <div className="flex justify-between items-center px-2">
-            <h2 className="text-2xl font-bold text-gray-800">历史账单</h2>
+    <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
+       <div className="flex justify-between items-center px-2 pt-2">
+            <div>
+                <h2 className="text-2xl font-extrabold text-gray-900">历史账单</h2>
+                <p className="text-xs text-gray-400 font-medium mt-1">所有周期的收支记录</p>
+            </div>
             <button 
                 onClick={() => exportData(data)}
-                className="flex items-center gap-1 text-sm text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+                className="flex items-center gap-1.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors shadow-sm"
             >
                 <Download size={14} />
-                导出
+                导出数据
             </button>
        </div>
 
        {sortedMonths.length === 0 && (
-           <div className="text-center py-12 text-gray-400">暂无记录</div>
+           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
+               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                   <Calendar className="text-gray-300 w-8 h-8" />
+               </div>
+               <p className="text-gray-400 font-medium">暂无历史记录</p>
+           </div>
        )}
 
        {sortedMonths.map(monthKey => {
@@ -76,7 +79,6 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
            const weekKeys = weeksByMonth[monthKey];
            const isMonthExpanded = expandedMonths[monthKey];
 
-           // Calculate Month Totals
            let monthWage = 0;
            let monthNet = 0;
            weekKeys.forEach(wk => {
@@ -84,36 +86,42 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
                const totalHours = Object.values(wd.dailyHours || {}).reduce((s, h) => s + h, 0);
                const wage = totalHours * (wd.hourlyRate || 0);
                const totalSpent = wd.expenses.reduce((s, e) => s + e.amount, 0);
-               const excess = Math.max(0, totalSpent - wd.budget);
+               
+               // Re-calculate budget based on work days
+               const activeDays = Object.values(wd.workDays || {}).filter(Boolean).length;
+               const budget = activeDays * (wd.dailySubsidy || 0);
+               
+               const excess = Math.max(0, totalSpent - budget);
                monthWage += wage;
                monthNet += (wage - excess);
            });
 
            return (
                <div key={monthKey} className="space-y-3">
-                   {/* Month Header */}
                    <button 
                      onClick={() => toggleMonth(monthKey)}
-                     className="w-full flex items-center justify-between bg-gray-900 text-white p-4 rounded-2xl shadow-md"
+                     className={`w-full flex items-center justify-between p-5 rounded-[24px] shadow-sm transition-all duration-300 group ${isMonthExpanded ? 'bg-black text-white' : 'bg-white text-gray-800 hover:shadow-md'}`}
                    >
-                       <div className="flex items-center gap-3">
-                           <div className="bg-white/10 p-2 rounded-xl">
-                               <Calendar size={20} />
+                       <div className="flex items-center gap-4">
+                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isMonthExpanded ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                               <span className="text-sm font-bold">{month}月</span>
                            </div>
                            <div className="text-left">
-                               <h3 className="text-lg font-bold">{year}年{month}月</h3>
-                               <p className="text-xs text-gray-400">包含 {weekKeys.length} 个记录周</p>
+                               <h3 className="text-lg font-bold">{year}</h3>
+                               <p className={`text-xs font-medium ${isMonthExpanded ? 'text-gray-400' : 'text-gray-400'}`}>净入统计</p>
                            </div>
                        </div>
                        <div className="text-right">
-                           <p className="text-sm font-medium text-gray-300">月净入</p>
-                           <p className="text-xl font-bold text-green-400">¥{monthNet.toFixed(0)}</p>
+                           <p className={`text-2xl font-bold tracking-tight ${isMonthExpanded ? 'text-green-400' : 'text-green-600'}`}>¥{monthNet.toFixed(0)}</p>
+                           <div className={`flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider ${isMonthExpanded ? 'text-gray-500' : 'text-gray-300'}`}>
+                               <TrendingUp size={12} />
+                               Month Total
+                           </div>
                        </div>
                    </button>
 
-                   {/* Weeks List */}
                    {isMonthExpanded && (
-                       <div className="space-y-4 pl-2">
+                       <div className="space-y-4 pl-2 animate-in slide-in-from-top-2 duration-300">
                            {weekKeys.map(weekKey => {
                                const weekData = data.weeks[weekKey];
                                const rangeStr = getWeekRangeDisplay(weekKey);
@@ -122,52 +130,52 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
                                const totalHours = Object.values(weekData.dailyHours || {}).reduce((s, h) => s + h, 0);
                                const wage = totalHours * (weekData.hourlyRate || 0);
                                const totalSpent = weekData.expenses.reduce((s, e) => s + e.amount, 0);
-                               const weekExcess = Math.max(0, totalSpent - weekData.budget);
+                               
+                               const activeDays = Object.values(weekData.workDays || {}).filter(Boolean).length;
+                               const budget = activeDays * (weekData.dailySubsidy || 0);
+                               
+                               const weekExcess = Math.max(0, totalSpent - budget);
                                const netIncome = wage - weekExcess;
 
-                               // Collect all dates that have data
                                const datesWithData = new Set<string>();
                                weekData.expenses.forEach(e => datesWithData.add(e.dateStr));
                                Object.keys(weekData.dailyHours || {}).forEach(d => datesWithData.add(d));
                                const sortedDates = Array.from(datesWithData).sort((a, b) => b.localeCompare(a));
 
                                return (
-                                   <div key={weekKey} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                   <div key={weekKey} className="bg-white rounded-[20px] border border-gray-100 shadow-sm overflow-hidden">
                                        <button 
                                           onClick={() => toggleWeek(weekKey)}
                                           className="w-full p-4 hover:bg-gray-50 transition-colors"
                                        >
-                                           <div className="flex justify-between items-start mb-2">
-                                               <span className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                                           <div className="flex justify-between items-center mb-3">
+                                               <span className="font-bold text-gray-800 text-xs bg-gray-100 px-2 py-1 rounded-lg">
                                                    {rangeStr}
-                                                   {weekData.shiftMode === 'night' && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 rounded">晚班</span>}
                                                </span>
                                                {isWeekExpanded ? <ChevronDown size={16} className="text-gray-400"/> : <ChevronRight size={16} className="text-gray-400"/>}
                                            </div>
-                                           <div className="flex justify-between items-center bg-gray-50 p-3 rounded-xl">
-                                                <div className="text-center">
-                                                    <p className="text-[10px] text-gray-500 mb-0.5">工时</p>
-                                                    <p className="font-bold text-gray-800">{totalHours}h</p>
+                                           <div className="grid grid-cols-3 gap-2">
+                                                <div className="bg-gray-50 rounded-xl p-2 text-center">
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase">工时</p>
+                                                    <p className="font-bold text-gray-800">{totalHours}<span className="text-xs text-gray-400 font-normal">h</span></p>
                                                 </div>
-                                                <div className="w-px h-6 bg-gray-200"></div>
-                                                <div className="text-center">
-                                                    <p className="text-[10px] text-gray-500 mb-0.5">应发</p>
-                                                    <p className="font-bold text-gray-800">¥{wage.toFixed(0)}</p>
+                                                <div className="bg-gray-50 rounded-xl p-2 text-center">
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase">出勤</p>
+                                                    <p className="font-bold text-gray-800">{activeDays}<span className="text-xs text-gray-400 font-normal">天</span></p>
                                                 </div>
-                                                <div className="w-px h-6 bg-gray-200"></div>
-                                                <div className="text-center">
-                                                    <p className="text-[10px] text-gray-500 mb-0.5">实收</p>
-                                                    <p className={`font-bold ${weekExcess > 0 ? 'text-orange-600' : 'text-green-600'}`}>¥{netIncome.toFixed(0)}</p>
+                                                <div className="bg-gray-50 rounded-xl p-2 text-center">
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase">实收</p>
+                                                    <p className={`font-bold ${weekExcess > 0 ? 'text-red-500' : 'text-green-600'}`}>¥{netIncome.toFixed(0)}</p>
                                                 </div>
                                            </div>
                                        </button>
 
                                        {isWeekExpanded && (
-                                           <div className="border-t border-gray-100 bg-white">
+                                           <div className="border-t border-gray-50 bg-white px-2 pb-2">
                                                {sortedDates.length === 0 ? (
-                                                   <p className="text-center text-sm text-gray-400 py-4">本周无记录</p>
+                                                   <p className="text-center text-xs text-gray-300 py-4">本周无记录</p>
                                                ) : (
-                                                   <div>
+                                                   <div className="pt-2 space-y-1">
                                                        {sortedDates.map(dateStr => {
                                                            const dateObj = new Date(dateStr);
                                                            const dayLabel = WEEK_DAYS[dateObj.getDay()];
@@ -179,28 +187,25 @@ const History: React.FC<Props> = ({ data, onDeleteExpense, onUpdateHistoryHours 
                                                                <button 
                                                                  key={dateStr}
                                                                  onClick={() => setSelectedDay({weekKey, dateStr})}
-                                                                 className="w-full flex items-center justify-between p-4 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
+                                                                 className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors group/item"
                                                                >
                                                                    <div className="flex items-center gap-3">
-                                                                       <div className="bg-gray-100 text-gray-600 font-bold text-xs w-10 h-10 rounded-xl flex flex-col items-center justify-center">
-                                                                           <span>{dateObj.getMonth() + 1}.{dateObj.getDate()}</span>
+                                                                       <div className="text-left w-8">
+                                                                           <p className="text-[10px] font-bold text-gray-400">{dateObj.getMonth() + 1}月</p>
+                                                                           <p className="text-sm font-bold text-gray-800">{dateObj.getDate()}</p>
                                                                        </div>
+                                                                       <div className="h-6 w-px bg-gray-100"></div>
                                                                        <div className="text-left">
-                                                                           <div className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                                                           <div className="text-xs font-bold text-gray-700 flex items-center gap-2">
                                                                                {dayLabel}
-                                                                               {hoursWorked > 0 && <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded">工 {hoursWorked}h</span>}
                                                                            </div>
-                                                                           <div className="text-xs text-gray-400 mt-0.5">
-                                                                               {dayExpenses.length} 笔支出
-                                                                           </div>
+                                                                           {hoursWorked > 0 && <p className="text-[10px] text-blue-500 font-medium">工时 {hoursWorked}h</p>}
                                                                        </div>
                                                                    </div>
                                                                    
                                                                    <div className="flex items-center gap-2">
-                                                                       <div className="text-right">
-                                                                           <p className="text-sm font-bold text-gray-800">-¥{dayTotal.toFixed(1)}</p>
-                                                                       </div>
-                                                                       <ChevronRight size={16} className="text-gray-300" />
+                                                                       {dayTotal > 0 && <span className="text-xs font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">-¥{dayTotal.toFixed(0)}</span>}
+                                                                       <ChevronRight size={14} className="text-gray-200 group-hover/item:text-gray-400" />
                                                                    </div>
                                                                </button>
                                                            );

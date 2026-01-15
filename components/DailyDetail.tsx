@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Clock, PieChart, Trash2, ChevronRight, Info } from 'lucide-react';
+import { ArrowLeft, Clock, PieChart, Trash2, Info } from 'lucide-react';
 import { AppState, Category } from '../types';
 import { CATEGORY_CONFIG, WEEK_DAYS } from '../constants';
 import ExpenseItem from './ExpenseItem';
@@ -45,34 +46,18 @@ const DailyDetail: React.FC<Props> = ({ weekKey, dateStr, data, onBack, onUpdate
 
   const wage = (parseFloat(hours) || 0) * (weekData.hourlyRate || 0);
 
-  // --- New Logic: Weekly Cumulative Subsidy Calculation ---
+  // --- Dynamic Subsidy Logic ---
+  const isWorkDay = weekData.workDays?.[dateStr] ?? false;
+  const dailySubsidy = isWorkDay ? (weekData.dailySubsidy || 28) : 0;
   
-  // 1. Calculate expenses BEFORE today within this week
-  // Since dateStr is YYYY-MM-DD, strict string comparison works for chronological order
-  const previousExpenses = weekData.expenses.filter(e => e.dateStr < dateStr);
-  const previousSpend = previousExpenses.reduce((sum, e) => sum + e.amount, 0);
+  // Weekly context
+  const activeWorkDaysCount = Object.values(weekData.workDays || {}).filter(Boolean).length;
+  const weekTotalSubsidy = activeWorkDaysCount * (weekData.dailySubsidy || 0);
+  const weekTotalSpent = weekData.expenses.reduce((s, e) => s + e.amount, 0);
+  const weekBalance = weekTotalSubsidy - weekTotalSpent;
 
-  // 2. Budget Logic
-  const weekBudget = weekData.budget;
-  
-  // 3. How much had we overflowed BEFORE today?
-  const previousOverflow = Math.max(0, previousSpend - weekBudget);
-
-  // 4. How much have we overflowed INCLUDING today?
-  const cumulativeSpend = previousSpend + totalExpenseToday;
-  const currentTotalOverflow = Math.max(0, cumulativeSpend - weekBudget);
-
-  // 5. The actual deduction attributed to TODAY is the difference
-  // Example: Budget 168.
-  // Mon: Spend 100. PreOverflow=0. CurrOverflow=0. Deduction=0.
-  // Tue: Spend 100. PreSpend=100. CumSpend=200. PreOverflow=0. CurrOverflow=32. Deduction=32.
-  const realDeduction = currentTotalOverflow - previousOverflow;
-  
-  // 6. Net Balance
-  const balance = wage - realDeduction;
-
-  // For display: How much was covered by subsidy today?
-  const coveredBySubsidy = totalExpenseToday - realDeduction;
+  // Day Impact
+  const dayNet = dailySubsidy - totalExpenseToday;
 
   // Chart Data
   const categoryTotals = useMemo(() => {
@@ -88,12 +73,11 @@ const DailyDetail: React.FC<Props> = ({ weekKey, dateStr, data, onBack, onUpdate
   let currentAngle = 0;
   const gradientParts: string[] = [];
   
-  // Tailwind Colors Mapping
   const colorMap: Record<Category, string> = {
-      [Category.Breakfast]: '#f97316', // orange-500
-      [Category.Lunch]: '#ca8a04',     // yellow-600
-      [Category.Dinner]: '#4f46e5',    // indigo-600
-      [Category.Other]: '#4b5563'      // gray-600
+      [Category.Breakfast]: '#f97316', 
+      [Category.Lunch]: '#ca8a04',     
+      [Category.Dinner]: '#4f46e5',    
+      [Category.Other]: '#4b5563'      
   };
 
   categories.forEach(cat => {
@@ -147,83 +131,48 @@ const DailyDetail: React.FC<Props> = ({ weekKey, dateStr, data, onBack, onUpdate
                      </div>
                  </div>
                  <div className="text-right">
-                     <p className="text-xs text-gray-400 font-medium mb-1">今日净收 (扣除超支后)</p>
-                     <p className={`text-2xl font-extrabold ${balance >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                         {balance >= 0 ? '+' : ''}{balance.toFixed(0)}
+                     <p className="text-xs text-gray-400 font-medium mb-1">工时收入</p>
+                     <p className="text-2xl font-extrabold text-gray-800">
+                         ¥{wage.toFixed(0)}
                      </p>
                  </div>
             </div>
 
             {/* Income vs Expense Progress */}
             <div className="space-y-4">
-                <div>
-                    <div className="flex justify-between text-xs mb-1.5 px-1">
-                        <span className="text-gray-500 font-medium">工时收入</span>
-                        <span className="font-bold text-gray-900">¥{wage.toFixed(0)}</span>
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="flex justify-between text-xs mb-2">
+                        <span className="text-gray-500 font-bold">今日收支概况</span>
+                        <span className={`font-bold ${dayNet >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {dayNet >= 0 ? '盈余' : '超支'} ¥{Math.abs(dayNet).toFixed(1)}
+                        </span>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500 rounded-full w-full opacity-80"></div>
+                    <div className="flex justify-between items-center text-xs">
+                         <div className="flex items-center gap-2">
+                             <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                             <span className="text-gray-600">获得餐补: {dailySubsidy}</span>
+                         </div>
+                         <div className="flex items-center gap-2">
+                             <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                             <span className="text-gray-600">实际支出: {totalExpenseToday.toFixed(1)}</span>
+                         </div>
                     </div>
                 </div>
-                <div>
-                    <div className="flex justify-between text-xs mb-1.5 px-1">
-                        <span className="text-gray-500 font-medium">今日支出</span>
-                        <div className="text-right">
-                             <span className="font-bold text-gray-900">¥{totalExpenseToday.toFixed(1)}</span>
-                             {coveredBySubsidy > 0 && (
-                                 <span className="text-[10px] text-green-600 ml-1">
-                                     (餐补抵扣 {coveredBySubsidy.toFixed(1)})
-                                 </span>
-                             )}
-                        </div>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden relative">
-                        {/* Subsidy Part (Green) */}
-                        <div 
-                           className="absolute top-0 left-0 h-full bg-green-400 rounded-full transition-all duration-500" 
-                           style={{ width: `${wage > 0 ? Math.min(100, (coveredBySubsidy / wage) * 100) : 0}%` }}
-                        ></div>
-                        {/* Deduction Part (Red) - starts after green */}
-                        <div 
-                           className="absolute top-0 h-full bg-red-500 rounded-r-full transition-all duration-500" 
-                           style={{ 
-                               left: `${wage > 0 ? Math.min(100, (coveredBySubsidy / wage) * 100) : 0}%`,
-                               width: `${wage > 0 ? Math.min(100, (realDeduction / wage) * 100) : (realDeduction > 0 ? 100 : 0)}%` 
-                           }}
-                        ></div>
-                    </div>
-                    {realDeduction > 0 ? (
-                        <p className="text-[10px] text-red-500 mt-1 text-right font-medium">
-                            今日导致超支，工资扣除 ¥{realDeduction.toFixed(1)}
-                        </p>
-                    ) : totalExpenseToday > 0 ? (
-                        <p className="text-[10px] text-green-600 mt-1 text-right font-medium">
-                            本周额度内，不扣工资
-                        </p>
-                    ) : null}
-                </div>
-            </div>
-            
-            {/* Logic Explanation Box */}
-            <div className="mt-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                <div className="flex items-start gap-2">
-                    <Info size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                    <div className="text-[10px] text-gray-500 space-y-1">
-                        <div className="flex justify-between">
-                            <span>本周累计(含今日):</span>
-                            <span className="font-medium">¥{cumulativeSpend.toFixed(1)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span>本周餐补预算:</span>
-                            <span className="font-medium">¥{weekBudget}</span>
-                        </div>
-                        {currentTotalOverflow > 0 && (
-                            <div className="flex justify-between text-orange-600">
-                                <span>当前累计超支:</span>
-                                <span className="font-medium">¥{currentTotalOverflow.toFixed(1)}</span>
-                            </div>
-                        )}
-                    </div>
+
+                <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+                     <div className="flex items-start gap-2">
+                         <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                         <div>
+                             <p className="text-xs font-bold text-blue-700 mb-1">对本周结算的影响</p>
+                             <p className="text-[10px] text-blue-600 leading-relaxed">
+                                 本日的{dayNet >= 0 ? '盈余' : '超支'} (¥{Math.abs(dayNet)}) 将计入本周总资金池。
+                                 <br/>
+                                 <span className="font-bold opacity-80">当前本周总结余: {weekBalance >= 0 ? '+' : ''}{weekBalance.toFixed(1)}</span>
+                                 <br/>
+                                 (总结余为负时才会在下月工资中扣除)
+                             </p>
+                         </div>
+                     </div>
                 </div>
             </div>
         </div>
@@ -245,8 +194,6 @@ const DailyDetail: React.FC<Props> = ({ weekKey, dateStr, data, onBack, onUpdate
                          if (amt === 0) return null;
                          const config = CATEGORY_CONFIG[cat];
                          const percent = ((amt / totalExpenseToday) * 100).toFixed(0);
-                         
-                         // Map config color class to hex for the dot
                          const dotColorClass = config.bg.replace('bg-', 'bg-').replace('100', '500');
                          
                          return (

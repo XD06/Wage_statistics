@@ -1,7 +1,8 @@
+
 import { AppState, STORAGE_KEY, WeekData } from '../types';
 
 const INITIAL_STATE: AppState = {
-  currentBudgetSetting: 168, 
+  currentDailySubsidySetting: 28, 
   currentHourlyRateSetting: 0,
   currentShiftSetting: 'day',
   weeks: {}
@@ -17,12 +18,40 @@ export const loadData = (): AppState => {
     if (data.currentHourlyRateSetting === undefined) data.currentHourlyRateSetting = 0;
     if (data.currentShiftSetting === undefined) data.currentShiftSetting = 'day';
     
+    // Migrate from old budget (total) to daily subsidy
+    if (data.currentDailySubsidySetting === undefined) {
+        // If old 'currentBudgetSetting' exists (e.g., 168), divide by 6, else default 28
+        const oldBudget = (data as any).currentBudgetSetting;
+        data.currentDailySubsidySetting = oldBudget ? oldBudget / 6 : 28;
+    }
+
     // Migrate weeks
     if (data.weeks) {
        Object.keys(data.weeks).forEach(key => {
-          if (data.weeks[key].hourlyRate === undefined) data.weeks[key].hourlyRate = 0;
-          if (data.weeks[key].dailyHours === undefined) data.weeks[key].dailyHours = {};
-          if (data.weeks[key].shiftMode === undefined) data.weeks[key].shiftMode = 'day';
+          const week = data.weeks[key];
+          if (week.hourlyRate === undefined) week.hourlyRate = 0;
+          if (week.dailyHours === undefined) week.dailyHours = {};
+          if (week.shiftMode === undefined) week.shiftMode = 'day';
+          
+          // Migrate budget to daily subsidy for existing weeks
+          if (week.dailySubsidy === undefined) {
+             week.dailySubsidy = week.budget ? week.budget / 6 : 28;
+          }
+          
+          // Initialize workDays if missing. 
+          // Default: Assume existing days with hours or Mon-Sat are work days
+          if (week.workDays === undefined) {
+              week.workDays = {};
+              // Simple migration: mark Mon-Sat as true
+              // We can infer dates from the week key
+              const startDate = new Date(key);
+              for(let i=0; i<6; i++) {
+                  const d = new Date(startDate);
+                  d.setDate(startDate.getDate() + i);
+                  const dKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                  week.workDays[dKey] = true; 
+              }
+          }
        });
     }
 

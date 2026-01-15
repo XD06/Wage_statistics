@@ -1,3 +1,4 @@
+
 export enum Category {
   Breakfast = '早餐',
   Lunch = '中餐',
@@ -18,18 +19,24 @@ export type ShiftMode = 'day' | 'night';
 
 export interface WeekData {
   weekStartDate: string; // Monday's date YYYY-MM-DD
-  budget: number; // Weekly Meal Subsidy (e.g., 168)
+  
+  // Refactored Budget Logic
+  dailySubsidy: number; // Per day allowance (e.g., 28)
+  budget: number; // Deprecated conceptually, but kept for legacy compat or calculated total
+  
+  workDays: Record<string, boolean>; // Key: dateStr, Value: Is this a subsidy-eligible day?
+
   hourlyRate: number; // Hourly wage
-  shiftMode: ShiftMode; // New: 'day' or 'night'
+  shiftMode: ShiftMode; // 'day' or 'night'
   dailyHours: Record<string, number>; // Key is dateStr, Value is hours worked
   expenses: Expense[];
 }
 
 export interface AppState {
-  currentBudgetSetting: number; 
+  currentDailySubsidySetting: number; // New setting
   currentHourlyRateSetting: number; 
-  currentShiftSetting: ShiftMode; // New: Default shift preference
+  currentShiftSetting: ShiftMode; 
   weeks: Record<string, WeekData>; 
 }
 
-export const STORAGE_KEY = 'weekly_keeper_data_v3'; // Bump version
+export const STORAGE_KEY = 'weekly_keeper_data_v4'; // Bump version

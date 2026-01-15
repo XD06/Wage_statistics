@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Category, WeekData } from '../types';
 import { CATEGORY_CONFIG, WEEK_DAYS } from '../constants';
-import { formatTime, isSunday, formatDateKey } from '../services/dateService';
+import { formatTime, isSunday, formatDateKey, getMonday } from '../services/dateService';
 import ExpenseItem from './ExpenseItem';
-import { AlertTriangle, Plus, Settings, Briefcase, Wallet, Moon, Sun, Calendar, ChevronDown } from 'lucide-react';
+import { Plus, Settings, Briefcase, Wallet, Moon, Sun, ChevronDown, Calculator, CalendarDays } from 'lucide-react';
 
 interface Props {
   viewingDate: Date;
@@ -13,11 +13,13 @@ interface Props {
   onDeleteExpense: (id: string) => void;
   onUpdateWorkHours: (hours: number) => void;
   onOpenBudgetModal: () => void;
+  onToggleWorkDay: (dateStr: string, isWork: boolean) => void;
 }
 
-const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAddExpense, onDeleteExpense, onUpdateWorkHours, onOpenBudgetModal }) => {
+const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAddExpense, onDeleteExpense, onUpdateWorkHours, onOpenBudgetModal, onToggleWorkDay }) => {
   const viewingDateStr = formatDateKey(viewingDate);
   const isViewingDateSunday = isSunday(viewingDate);
+  const mondayDate = getMonday(viewingDate);
 
   // Date Display Logic
   const year = viewingDate.getFullYear();
@@ -25,13 +27,13 @@ const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAdd
   const day = viewingDate.getDate();
   const weekDay = WEEK_DAYS[viewingDate.getDay()];
 
-  // Form State for Expense
+  // Form State
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [category, setCategory] = useState<Category | null>(null);
   const [time, setTime] = useState(formatTime(new Date()));
 
-  // Form State for Work Hours
+  // Work Hours
   const [todayHours, setTodayHours] = useState<string>('');
 
   useEffect(() => {
@@ -43,10 +45,11 @@ const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAdd
      }
   }, [weekData.dailyHours, viewingDateStr]);
 
+  const isWorkDay = weekData.workDays?.[viewingDateStr] ?? false;
+
   // --- Calculations ---
   const currentHourlyRate = weekData.hourlyRate || 0;
   const hoursToday = parseFloat(todayHours) || 0;
-  const wageToday = hoursToday * currentHourlyRate;
   
   const totalWeekHours = Object.values(weekData.dailyHours || {}).reduce((sum, h) => sum + h, 0);
   const wageWeekTotal = totalWeekHours * currentHourlyRate;
@@ -59,9 +62,22 @@ const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAdd
   const todaySpent = todayExpensesList.reduce((sum, e) => sum + e.amount, 0);
   const weekSpent = weekData.expenses.reduce((sum, e) => sum + e.amount, 0);
 
-  const weekBudget = weekData.budget;
+  const activeWorkDaysCount = Object.values(weekData.workDays || {}).filter(Boolean).length;
+  const dailySubsidy = weekData.dailySubsidy || 0;
+  const weekBudget = activeWorkDaysCount * dailySubsidy;
+
   const weekExcess = Math.max(0, weekSpent - weekBudget);
   const weekNetIncome = wageWeekTotal - weekExcess;
+
+  const weekDates = useMemo(() => {
+      const dates = [];
+      for(let i=0; i<7; i++) {
+          const d = new Date(mondayDate);
+          d.setDate(mondayDate.getDate() + i);
+          dates.push(d);
+      }
+      return dates;
+  }, [mondayDate]);
 
   const handleExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,22 +107,29 @@ const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAdd
       }
   };
 
+  // Theme Constants
+  const isNightShift = weekData.shiftMode === 'night';
+  const mainCardGradient = isNightShift 
+    ? 'bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#312e81]' 
+    : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900';
+  
+  const activeDayColor = isNightShift ? 'bg-indigo-600' : 'bg-black';
+
   return (
-    <div className="pb-24 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="pb-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      {/* 0. Calendar Header (Interactive) */}
-      <div className="flex items-center justify-between px-1 pt-2">
-          <div className="relative group cursor-pointer p-1 -m-1 rounded-xl hover:bg-gray-100 transition-colors">
-              <div className="flex items-baseline gap-2">
-                  <h1 className="text-3xl font-extrabold text-gray-900">{day}日</h1>
-                  <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
-                      {weekDay}
-                      <ChevronDown size={14} className="opacity-50" />
-                  </span>
+      {/* 0. Top Controls */}
+      <div className="flex items-center justify-between px-1">
+          <div className="relative group cursor-pointer">
+              <div className="flex items-baseline gap-2 transition-transform active:scale-95">
+                  <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">{day}</h1>
+                  <div className="flex flex-col">
+                      <span className="text-sm font-bold text-gray-500 flex items-center gap-1 uppercase tracking-wide">
+                          {weekDay} <ChevronDown size={14} />
+                      </span>
+                      <span className="text-xs text-gray-400 font-medium">{year}.{month}</span>
+                  </div>
               </div>
-              <p className="text-xs font-medium text-gray-400">{year}年{month}月</p>
-              
-              {/* Invisible Native Date Picker Layer */}
               <input 
                   type="date" 
                   value={viewingDateStr}
@@ -115,243 +138,246 @@ const Dashboard: React.FC<Props> = ({ viewingDate, onDateChange, weekData, onAdd
               />
           </div>
           
-          <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 shadow-sm ${isViewingDateSunday ? 'bg-yellow-50 border-yellow-100 text-yellow-700' : 'bg-white border-gray-100 text-gray-600'}`}>
-              <Calendar size={16} className={isViewingDateSunday ? "text-yellow-600" : "text-gray-400"} />
-              <div className="text-right">
-                  <p className="text-[10px] font-bold leading-tight">{isViewingDateSunday ? '周日结算' : '正常工作'}</p>
-                  <p className="text-[8px] opacity-80 leading-tight">
-                      {isViewingDateSunday ? 'Settlement' : 'Work Day'}
-                  </p>
+          <button 
+                onClick={onOpenBudgetModal}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 text-gray-600 rounded-full hover:bg-gray-50 hover:shadow-md transition-all"
+            >
+                <Settings size={20} />
+            </button>
+      </div>
+
+      {/* 1. Modern Week Schedule Strip */}
+      <div className="bg-white rounded-[24px] p-2 shadow-sm border border-gray-100 flex justify-between items-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gray-50"></div>
+          {weekDates.map((d, index) => {
+              const dKey = formatDateKey(d);
+              const isActive = weekData.workDays?.[dKey] ?? false; 
+              const isSelected = dKey === viewingDateStr;
+              const isToday = dKey === formatDateKey(new Date());
+              const label = ['一','二','三','四','五','六','日'][index];
+
+              return (
+                  <button 
+                    key={dKey}
+                    onClick={() => onToggleWorkDay(dKey, !isActive)}
+                    className={`relative z-10 flex flex-col items-center justify-center w-[13.5%] py-3 rounded-2xl transition-all duration-300 ${
+                        isActive 
+                            ? (isSelected ? `${activeDayColor} text-white shadow-lg scale-105` : 'bg-gray-100 text-gray-800 hover:bg-gray-200')
+                            : 'text-gray-300 hover:text-gray-400'
+                    }`}
+                  >
+                      <span className="text-[10px] font-bold mb-0.5 opacity-80">{label}</span>
+                      <span className="text-sm font-extrabold">{d.getDate()}</span>
+                      
+                      {/* Status Dot */}
+                      {isToday && !isActive && <div className="absolute bottom-1 w-1 h-1 bg-red-400 rounded-full"></div>}
+                  </button>
+              )
+          })}
+      </div>
+
+      {/* 2. Main Financial Card */}
+      <div className={`rounded-[32px] p-7 shadow-xl shadow-indigo-900/10 text-white relative overflow-hidden isolate ${mainCardGradient}`}>
+        {/* Abstract Shapes */}
+        <div className="absolute top-[-50%] right-[-20%] w-[80%] h-[80%] bg-white/5 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div className="relative z-10">
+          <div className="flex justify-between items-start mb-8">
+            <div>
+                <div className="flex items-center gap-2 mb-2">
+                    <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">本周净收入</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10 ${isNightShift ? 'bg-indigo-500/20 text-indigo-200' : 'bg-orange-500/20 text-orange-200'}`}>
+                        {isNightShift ? 'NIGHT' : 'DAY'}
+                    </span>
+                </div>
+                <div className="text-5xl font-extrabold tracking-tight flex items-baseline gap-1">
+                    <span className="text-2xl opacity-60">¥</span>
+                    {weekNetIncome.toFixed(0)}
+                </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/5 backdrop-blur-sm p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
+                  <div className="flex items-center gap-2 text-gray-300 mb-1">
+                      <Briefcase size={14} />
+                      <span className="text-xs font-bold">工时</span>
+                  </div>
+                  <div className="text-2xl font-bold">{totalWeekHours}<span className="text-sm text-gray-400 ml-1 font-medium">h</span></div>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
+                  <div className="flex items-center gap-2 text-gray-300 mb-1">
+                      <Wallet size={14} />
+                      <span className="text-xs font-bold">薪资</span>
+                  </div>
+                  <div className="text-2xl font-bold">¥{wageWeekTotal.toFixed(0)}</div>
               </div>
           </div>
+        </div>
       </div>
 
-      {/* 1. Overview Card (Income & Net) */}
-      <div className={`rounded-3xl p-6 shadow-lg text-white relative overflow-hidden transition-colors duration-500 ${weekData.shiftMode === 'night' ? 'bg-gradient-to-br from-indigo-950 to-slate-900' : 'bg-gradient-to-br from-gray-900 to-gray-800'}`}>
-        
-        {/* Theme Decoration */}
-        {weekData.shiftMode === 'night' ? (
-           <>
-             <div className="absolute top-4 right-4 text-white/10"><Moon size={120} /></div>
-             <div className="absolute bottom-[-20px] left-[-20px] w-24 h-24 bg-indigo-500/20 rounded-full blur-xl"></div>
-           </>
-        ) : (
-           <>
-             <div className="absolute top-[-20px] right-[-20px] w-32 h-32 bg-white/5 rounded-full blur-2xl"></div>
-             <div className="absolute bottom-[-20px] left-[-20px] w-24 h-24 bg-orange-500/10 rounded-full blur-xl"></div>
-           </>
-        )}
+      {/* 3. Settlement Progress Bar Card */}
+      <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 relative overflow-hidden">
+          <div className="flex justify-between items-end mb-4 relative z-10">
+              <div>
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                      <Calculator className="w-4 h-4 text-blue-500" />
+                      本周收支概览
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1">餐补盈余将结转用于抵扣</p>
+              </div>
+              <div className="text-right">
+                  <span className={`text-xl font-extrabold ${weekBudget - weekSpent >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      {weekBudget - weekSpent >= 0 ? '+' : ''}{(weekBudget - weekSpent).toFixed(1)}
+                  </span>
+                  <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">当前结余</p>
+              </div>
+          </div>
 
-        <div className="flex justify-between items-start mb-6 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-gray-400 text-xs font-medium uppercase tracking-wider">本周净收入 (截至目前)</h2>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${weekData.shiftMode === 'night' ? 'border-indigo-400 text-indigo-300' : 'border-orange-400 text-orange-300'}`}>
-                    {weekData.shiftMode === 'night' ? '晚班' : '白班'}
-                </span>
+          {/* Visual Bar */}
+          <div className="flex h-4 rounded-full overflow-hidden bg-gray-100 mb-4">
+              <div className="bg-green-500 transition-all duration-700" style={{ width: `${Math.min(100, (weekBudget / (weekBudget + weekSpent || 1)) * 100)}%` }}></div>
+              <div className="bg-red-500 transition-all duration-700" style={{ width: `${Math.min(100, (weekSpent / (weekBudget + weekSpent || 1)) * 100)}%` }}></div>
+          </div>
+
+          <div className="flex justify-between items-center text-xs font-medium">
+               <div className="flex items-center gap-2">
+                   <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                   <span className="text-gray-600">额度 ¥{weekBudget} ({activeWorkDaysCount}天)</span>
+               </div>
+               <div className="flex items-center gap-2">
+                   <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                   <span className="text-gray-600">支出 ¥{weekSpent.toFixed(0)}</span>
+               </div>
+          </div>
+      </div>
+
+      {/* 4. Add Expense & Log Work Section */}
+      <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
+        
+        {/* Header Strip */}
+        <div className="bg-gray-50/50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-black" strokeWidth={3} />
+                记账与工时
+            </h3>
+            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-200 shadow-sm">
+                 <span className="text-[10px] font-bold text-gray-400 uppercase">Today's Work</span>
+                 <input 
+                    type="number" 
+                    step="0.5"
+                    value={todayHours}
+                    onChange={(e) => setTodayHours(e.target.value)}
+                    onBlur={handleHoursBlur}
+                    placeholder="0"
+                    className="w-8 text-center text-sm font-bold text-gray-900 outline-none bg-transparent p-0"
+                 />
+                 <span className="text-[10px] font-bold text-gray-400">H</span>
             </div>
-            <div className="text-4xl font-extrabold tracking-tight">
-              ¥{weekNetIncome.toFixed(0)}
-            </div>
-            {weekExcess > 0 && (
-                <div className="text-red-400 text-xs mt-1 font-medium bg-red-900/30 px-2 py-1 rounded-md inline-block">
-                    本周总超支 ¥{weekExcess.toFixed(1)} (已扣除)
+        </div>
+        
+        <div className="p-6">
+            {!isWorkDay && (
+                <div className="bg-gray-50 border border-gray-100 p-4 rounded-2xl mb-6 text-center">
+                    <p className="text-sm font-bold text-gray-500">今日标记为休息</p>
+                    <p className="text-xs text-gray-400 mt-1">若需记工时或计算餐补，请在上方日历点击对应日期。</p>
                 </div>
             )}
-          </div>
-          <button 
-            onClick={onOpenBudgetModal}
-            className="p-2 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-colors backdrop-blur-sm"
-          >
-            <Settings size={20} />
-          </button>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3 relative z-10">
-            {/* Today's Stats */}
-            <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-md border border-white/5">
-                <div className={`flex items-center gap-1.5 mb-2 ${weekData.shiftMode === 'night' ? 'text-indigo-200' : 'text-blue-200'}`}>
-                    <Briefcase size={14} />
-                    <span className="text-xs font-bold">当日工作</span>
+            {weekData.hourlyRate <= 0 ? (
+               <button onClick={onOpenBudgetModal} className="w-full py-4 bg-gray-50 border border-dashed border-gray-300 rounded-2xl text-gray-500 font-bold hover:bg-gray-100 transition-colors">
+                    配置薪资参数以开始使用
+                </button>
+            ) : (
+              <form onSubmit={handleExpenseSubmit} className="space-y-6">
+                {/* Big Amount Input */}
+                <div className="relative group">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block pl-1">Amount</label>
+                    <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-gray-300">¥</span>
+                        <input 
+                            type="number" 
+                            step="0.01"
+                            value={amount}
+                            onChange={e => setAmount(e.target.value)}
+                            placeholder="0.00"
+                            className="w-full bg-gray-50 border-2 border-transparent hover:bg-white hover:border-gray-200 focus:bg-white focus:border-black rounded-2xl pl-10 pr-4 py-4 text-3xl font-extrabold text-gray-900 outline-none transition-all placeholder:text-gray-300"
+                        />
+                    </div>
                 </div>
-                <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold">{hoursToday}</span>
-                    <span className="text-xs text-gray-400">小时</span>
-                </div>
-                <div className="mt-1 flex justify-between items-end">
-                     <span className="text-xs text-gray-400">赚取</span>
-                     <span className="text-sm font-bold text-green-300">¥{wageToday.toFixed(0)}</span>
-                </div>
-            </div>
 
-            {/* Week's Wages (Gross) */}
-            <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-md border border-white/5">
-                <div className="flex items-center gap-1.5 mb-2 text-purple-200">
-                    <Wallet size={14} />
-                    <span className="text-xs font-bold">本周总工时</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold">{totalWeekHours}</span>
-                    <span className="text-xs text-gray-400">小时</span>
-                </div>
-                <div className="mt-1 flex justify-between items-end">
-                     <span className="text-xs text-gray-400">应发</span>
-                     <span className="text-sm font-bold text-purple-300">¥{wageWeekTotal.toFixed(0)}</span>
-                </div>
-            </div>
-        </div>
-      </div>
-
-      {/* 2. Work Log Section */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center justify-between">
-           <div className="flex items-center gap-3">
-               <div className={`p-2.5 rounded-full ${weekData.shiftMode === 'night' ? 'bg-indigo-50 text-indigo-600' : 'bg-orange-50 text-orange-600'}`}>
-                   {weekData.shiftMode === 'night' ? <Moon size={20} /> : <Sun size={20} />}
-               </div>
-               <div>
-                   <h3 className="font-bold text-gray-800 text-sm">{viewingDateStr === formatDateKey(new Date()) ? '今日' : '补录'}工时登记</h3>
-                   <p className="text-xs text-gray-400">时薪 ¥{currentHourlyRate}</p>
-               </div>
-           </div>
-           <div className="flex items-center gap-2">
-               <input 
-                  type="number" 
-                  step="0.5"
-                  value={todayHours}
-                  onChange={(e) => setTodayHours(e.target.value)}
-                  onBlur={handleHoursBlur}
-                  placeholder="0"
-                  className="w-20 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-center text-lg font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
-               />
-               <span className="text-sm font-medium text-gray-500">小时</span>
-           </div>
-      </div>
-
-      {/* 3. Expense/Subsidy Status (Weekly Aggregate) */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-gray-800 text-sm">本周餐补进度</h3>
-              <span className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded-lg font-bold">
-                  总预算 ¥{weekBudget}
-              </span>
-          </div>
-          
-          <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden mb-2">
-              <div 
-                className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${weekSpent > weekBudget ? 'bg-red-500' : 'bg-green-500'}`}
-                style={{ width: `${Math.min(100, (weekSpent / weekBudget) * 100)}%` }}
-              ></div>
-          </div>
-          
-          <div className="flex justify-between text-xs mt-2">
-              <span className="text-gray-500">已用 ¥{weekSpent.toFixed(1)}</span>
-              {weekSpent > weekBudget ? (
-                  <span className="text-red-600 font-bold">已超支 ¥{(weekSpent - weekBudget).toFixed(1)} (从工资扣除)</span>
-              ) : (
-                  <span className="text-green-600 font-bold">剩余 ¥{(weekBudget - weekSpent).toFixed(1)}</span>
-              )}
-          </div>
-          <p className="text-[10px] text-gray-400 mt-2 text-center">
-              * 当日超支不会立即扣款，仅当本周累计消费超过 ¥{weekBudget} 时扣除。
-          </p>
-      </div>
-
-      {/* 4. Add Expense Form */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Plus className="w-5 h-5 text-blue-500" />
-            {viewingDateStr === formatDateKey(new Date()) ? '记一笔支出' : `补录 ${month}月${day}日 支出`}
-        </h3>
-        
-        {isViewingDateSunday ? (
-            <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                {/* Category Grid */}
                 <div>
-                    <p className="text-sm font-bold">周日结算日</p>
-                    <p className="text-xs mt-1 opacity-80">日常餐补仅限周一至周六。消费将全额计入额外支出。</p>
+                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block pl-1">Category</label>
+                     <div className="grid grid-cols-4 gap-3">
+                        {Object.values(Category).map(cat => {
+                            const config = CATEGORY_CONFIG[cat];
+                            const Icon = config.icon;
+                            const isSelected = category === cat;
+                            return (
+                                <button
+                                    key={cat}
+                                    type="button"
+                                    onClick={() => setCategory(isSelected ? null : cat)}
+                                    className={`aspect-square flex flex-col items-center justify-center rounded-2xl border-2 transition-all duration-200 ${
+                                        isSelected 
+                                          ? `border-${config.color.split('-')[1]}-500 bg-${config.color.split('-')[1]}-50 scale-105 shadow-md` 
+                                          : 'border-transparent bg-gray-50 hover:bg-gray-100 text-gray-400'
+                                    }`}
+                                >
+                                    <Icon className={`w-6 h-6 mb-2 ${isSelected ? config.color : 'text-gray-400'}`} />
+                                    <span className={`text-[10px] font-bold ${isSelected ? 'text-gray-900' : 'text-gray-400'}`}>{cat}</span>
+                                </button>
+                            )
+                        })}
+                     </div>
                 </div>
-            </div>
-        ) : weekData.hourlyRate <= 0 ? (
-           <div className="bg-blue-50 text-blue-800 p-4 rounded-xl flex items-center gap-3 cursor-pointer" onClick={onOpenBudgetModal}>
-                <Settings className="w-5 h-5" />
-                <p className="text-sm">请先设置工价和餐补预算。</p>
-            </div>
-        ) : (
-          <form onSubmit={handleExpenseSubmit} className="space-y-4">
-            <div className="flex gap-4">
-                <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">金额</label>
-                    <input 
-                        type="number" 
-                        step="0.01"
-                        value={amount}
-                        onChange={e => setAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-lg font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+
+                {/* Details Row */}
+                <div className="flex gap-4">
+                     <div className="flex-1">
+                        <input 
+                            type="text" 
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            placeholder="添加备注..."
+                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-gray-900 outline-none focus:border-black transition-colors"
+                        />
+                     </div>
+                     <div className="w-1/3">
+                        <input 
+                            type="time" 
+                            value={time}
+                            onChange={e => setTime(e.target.value)}
+                            className="w-full bg-white border border-gray-200 rounded-xl px-2 py-3 text-sm font-medium text-center text-gray-900 outline-none focus:border-black transition-colors"
+                        />
+                     </div>
                 </div>
-                <div className="w-1/3">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">时间</label>
-                    <input 
-                        type="time" 
-                        value={time}
-                        onChange={e => setTime(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-2 py-2.5 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                </div>
-            </div>
 
-            <div>
-                 <label className="block text-xs font-medium text-gray-500 mb-2">分类</label>
-                 <div className="flex gap-2 justify-between">
-                    {Object.values(Category).map(cat => {
-                        const config = CATEGORY_CONFIG[cat];
-                        const Icon = config.icon;
-                        const isSelected = category === cat;
-                        return (
-                            <button
-                                key={cat}
-                                type="button"
-                                onClick={() => setCategory(isSelected ? null : cat)}
-                                className={`flex-1 flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${isSelected ? `border-${config.color.split('-')[1]}-500 ${config.bg}` : 'border-gray-100 bg-white hover:bg-gray-50'}`}
-                            >
-                                <Icon className={`w-5 h-5 mb-1 ${isSelected ? config.color : 'text-gray-400'}`} />
-                                <span className={`text-[10px] ${isSelected ? 'font-bold text-gray-800' : 'text-gray-500'}`}>{cat}</span>
-                            </button>
-                        )
-                    })}
-                 </div>
-            </div>
-
-            <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">备注</label>
-                <input 
-                    type="text" 
-                    value={note}
-                    onChange={e => setNote(e.target.value)}
-                    placeholder="例如：买烟、饮料..."
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
-                />
-            </div>
-
-            <button type="submit" className="w-full bg-black text-white py-3 rounded-xl font-bold shadow-lg shadow-gray-200 active:scale-95 transition-transform">
-                记录并计算
-            </button>
-          </form>
-        )}
+                <button type="submit" className="w-full bg-black text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-gray-200 active:scale-95 transition-transform hover:bg-gray-900">
+                    确认记账
+                </button>
+              </form>
+            )}
+        </div>
       </div>
 
       {/* 5. Today's List */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-         <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider text-gray-400">
-             {viewingDateStr === formatDateKey(new Date()) ? '今日' : `${day}日`}消费明细
-         </h3>
+      <div className="bg-white/60 backdrop-blur-md rounded-[32px] p-6 shadow-sm border border-white/50">
+         <div className="flex items-center justify-between mb-4 px-1">
+             <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                 <CalendarDays className="w-4 h-4 text-gray-400" />
+                 今日明细
+             </h3>
+             <span className="text-xs font-bold text-gray-400">-{todaySpent.toFixed(1)}</span>
+         </div>
          {todayExpensesList.length === 0 ? (
-             <div className="text-center py-8 text-gray-400 text-sm">
-                 暂无消费
+             <div className="text-center py-8 text-gray-300 text-sm font-medium">
+                 今天还没有花钱 ✨
              </div>
          ) : (
-             <div>
+             <div className="space-y-3">
                  {todayExpensesList.map(item => (
                      <ExpenseItem key={item.id} expense={item} onDelete={onDeleteExpense} />
                  ))}

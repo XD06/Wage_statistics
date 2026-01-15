@@ -1,36 +1,18 @@
+
 import { WeekData } from '../types';
 
 export const getMonday = (d: Date): Date => {
   const date = new Date(d);
-  const day = date.getDay();
-  // If Sunday (0), we consider it part of the *next* week logic per requirements?
-  // Requirement 5.1: "If today is Sunday, system should show next week data"
-  // Requirement 2: Week is Mon-Sat.
+  const day = date.getDay(); // 0 is Sunday
   
-  // Logic: 
-  // If today is Sunday (0), the "Current Week" starts tomorrow (Monday).
-  // If today is Mon-Sat (1-6), the "Current Week" started on the previous Monday (or today).
-  
-  const diff = date.getDate() - day + (day === 0 ? 1 : -6); 
-  // Wait, standard getMonday:
-  // If day is 0 (Sun), Monday is date + 1.
-  // If day is 1 (Mon), Monday is date.
-  // If day is 6 (Sat), Monday is date - 5.
-  
-  const currentDay = day === 0 ? 7 : day; // Treat Sunday as 7 for calc
-  // However, Requirement 5.1 says: "If today is Sunday, show next week".
-  // So if Sunday, Monday is Tomorrow.
-  
-  if (day === 0) {
-      const nextMon = new Date(date);
-      nextMon.setDate(date.getDate() + 1);
-      nextMon.setHours(0, 0, 0, 0);
-      return nextMon;
-  }
+  // Logic: Week is Mon (1) to Sun (7).
+  // If day is 0 (Sun), Monday was 6 days ago.
+  // If day is 1 (Mon), Monday is today (0 days ago).
+  // If day is 2 (Tue), Monday was 1 day ago.
+  const diffToMon = day === 0 ? 6 : day - 1;
 
-  const diffToMon = date.getDate() - (currentDay - 1);
   const monday = new Date(date);
-  monday.setDate(diffToMon);
+  monday.setDate(date.getDate() - diffToMon);
   monday.setHours(0, 0, 0, 0);
   return monday;
 };
@@ -54,7 +36,7 @@ export const isSunday = (date: Date): boolean => {
 export const getWeekRangeDisplay = (mondayStr: string): string => {
   const start = new Date(mondayStr);
   const end = new Date(start);
-  end.setDate(start.getDate() + 5); // Saturday
+  end.setDate(start.getDate() + 6); // Sunday is end
   
   const y1 = start.getFullYear();
   const m1 = start.getMonth() + 1;

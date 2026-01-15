@@ -5,42 +5,34 @@ import { ShiftMode } from '../types';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  currentBudget: number;
+  currentDailySubsidy: number;
   currentHourlyRate: number;
   currentShift: ShiftMode;
-  onSave: (budget: number, hourlyRate: number, shift: ShiftMode) => void;
+  onSave: (dailySubsidy: number, hourlyRate: number, shift: ShiftMode) => void;
 }
 
-const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentHourlyRate, currentShift, onSave }) => {
-  const [budgetVal, setBudgetVal] = useState('');
+const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentDailySubsidy, currentHourlyRate, currentShift, onSave }) => {
+  const [dailyVal, setDailyVal] = useState('');
   const [rateVal, setRateVal] = useState('');
   const [shiftVal, setShiftVal] = useState<ShiftMode>('day');
 
   useEffect(() => {
     if (isOpen) {
-      setBudgetVal(currentBudget > 0 ? currentBudget.toString() : '168');
+      setDailyVal(currentDailySubsidy > 0 ? currentDailySubsidy.toString() : '28');
       setRateVal(currentHourlyRate > 0 ? currentHourlyRate.toString() : '');
       setShiftVal(currentShift || 'day');
     }
-  }, [isOpen, currentBudget, currentHourlyRate, currentShift]);
-
-  // Auto-set rate when shift changes to Night, but allow override if user insists (though prompt says 23)
-  const handleShiftChange = (mode: ShiftMode) => {
-      setShiftVal(mode);
-      if (mode === 'night') {
-          setRateVal('23');
-      }
-  };
+  }, [isOpen, currentDailySubsidy, currentHourlyRate, currentShift]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const b = parseFloat(budgetVal);
+    const d = parseFloat(dailyVal);
     const r = parseFloat(rateVal);
     
-    if (isNaN(b) || b < 0) {
-      alert("请输入有效的餐补金额");
+    if (isNaN(d) || d < 0) {
+      alert("请输入有效的日餐补金额");
       return;
     }
     if (isNaN(r) || r < 0) {
@@ -48,52 +40,48 @@ const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentH
       return;
     }
 
-    onSave(b, r, shiftVal);
+    onSave(d, r, shiftVal);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h3 className="text-lg font-bold text-gray-800">设置工作与薪资参数</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={24} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-white/20">
+        <div className="flex justify-between items-center p-6 border-b border-gray-100">
+          <h3 className="text-xl font-extrabold text-gray-900">参数配置</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors">
+            <X size={18} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           
           {/* Shift Selection */}
           <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">当前班次模式</label>
-              <div className="flex bg-gray-100 p-1 rounded-xl">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">工作班次</label>
+              <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => handleShiftChange('day')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${shiftVal === 'day' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => { setShiftVal('day'); }}
+                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl transition-all border-2 ${shiftVal === 'day' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'bg-gray-50 border-transparent text-gray-400 hover:bg-gray-100'}`}
                   >
-                      <Sun size={16} />
-                      白班
+                      <Sun size={24} className={shiftVal === 'day' ? 'text-orange-500' : 'text-gray-300'} />
+                      <span className="text-sm font-bold">白班</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleShiftChange('night')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${shiftVal === 'night' ? 'bg-gray-800 text-indigo-300 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => { setShiftVal('night'); setRateVal('23'); }}
+                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl transition-all border-2 ${shiftVal === 'night' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-gray-50 border-transparent text-gray-400 hover:bg-gray-100'}`}
                   >
-                      <Moon size={16} />
-                      晚班
+                      <Moon size={24} className={shiftVal === 'night' ? 'text-indigo-500' : 'text-gray-300'} />
+                      <span className="text-sm font-bold">晚班</span>
                   </button>
               </div>
-              <p className="text-xs text-gray-400 mt-2">
-                  {shiftVal === 'day' ? '白班模式：自定义时薪，常规就餐时间分类。' : '晚班模式：建议时薪 ¥23，日夜颠倒的就餐分类。'}
-              </p>
           </div>
 
           {/* Hourly Rate */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-              <Clock size={16} className="text-blue-500" />
-              每小时工价 (元/小时)
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">
+              时薪 (¥/h)
             </label>
             <div className="relative">
               <input
@@ -101,41 +89,34 @@ const BudgetModal: React.FC<Props> = ({ isOpen, onClose, currentBudget, currentH
                 step="0.1"
                 value={rateVal}
                 onChange={(e) => setRateVal(e.target.value)}
-                placeholder="例如：30"
-                className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900"
+                placeholder="0"
+                className="w-full px-5 py-4 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold text-gray-900 transition-all border border-transparent focus:border-transparent"
               />
             </div>
-            {shiftVal === 'night' && rateVal !== '23' && (
-                <p className="text-xs text-orange-500 mt-1">注意：晚班标准时薪通常为 ¥23</p>
-            )}
           </div>
 
-          {/* Subsidy */}
+          {/* Daily Subsidy */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-               <DollarSign size={16} className="text-green-500" />
-               每周餐补总额 (元)
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">
+               日补标准 (¥/天)
             </label>
             <div className="relative">
               <input
                 type="number"
                 step="1"
-                value={budgetVal}
-                onChange={(e) => setBudgetVal(e.target.value)}
-                placeholder="例如：168"
-                className="w-full px-4 py-3 bg-green-50 border border-green-100 rounded-xl focus:ring-2 focus:ring-green-500 outline-none text-xl font-bold text-gray-900"
+                value={dailyVal}
+                onChange={(e) => setDailyVal(e.target.value)}
+                placeholder="28"
+                className="w-full px-5 py-4 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-green-500 outline-none text-xl font-bold text-gray-900 transition-all border border-transparent focus:border-transparent"
               />
             </div>
-            <p className="text-xs text-gray-500 mt-2">
-              按周累计结算。本周总消费超过此金额部分将从工资扣除。
-            </p>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-xl transition-colors shadow-lg"
+            className="w-full py-4 bg-black hover:bg-gray-900 text-white font-bold rounded-2xl transition-transform active:scale-95 shadow-xl"
           >
-            保存设置
+            保存配置
           </button>
         </form>
       </div>
