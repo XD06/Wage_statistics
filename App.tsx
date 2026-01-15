@@ -254,7 +254,7 @@ const App: React.FC = () => {
           This ensures the container is exactly the viewport height, forcing internal scrolling
           and keeping the absolute positioned nav bar visible at the bottom.
       */}
-      <div className="w-full md:max-w-md bg-white/80 md:rounded-[40px] h-[98dvh] md:h-[90vh] shadow-2xl relative flex flex-col overflow-hidden glass border border-white/20">
+      <div className="w-full md:max-w-md bg-white/80 md:rounded-[40px] h-[100dvh] md:h-[90vh] shadow-2xl relative flex flex-col overflow-hidden glass border border-white/20">
         
         {/* Header */}
         <header className="pt-8 pb-4 px-6 sticky top-0 z-10 bg-white/50 backdrop-blur-md border-b border-gray-100/50 shrink-0">
