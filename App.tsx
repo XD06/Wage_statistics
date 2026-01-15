@@ -248,10 +248,16 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex justify-center md:py-8">
-      <div className="w-full md:max-w-md bg-white/80 md:rounded-[40px] min-h-screen md:min-h-0 md:h-[90vh] shadow-2xl relative flex flex-col overflow-hidden glass border border-white/20">
+      {/* 
+          UPDATED CONTAINER STYLES: 
+          Replaced `min-h-screen` with `h-[100dvh]` to fix mobile scrolling issues.
+          This ensures the container is exactly the viewport height, forcing internal scrolling
+          and keeping the absolute positioned nav bar visible at the bottom.
+      */}
+      <div className="w-full md:max-w-md bg-white/80 md:rounded-[40px] h-[98dvh] md:h-[90vh] shadow-2xl relative flex flex-col overflow-hidden glass border border-white/20">
         
         {/* Header */}
-        <header className="pt-8 pb-4 px-6 sticky top-0 z-10 bg-white/50 backdrop-blur-md border-b border-gray-100/50">
+        <header className="pt-8 pb-4 px-6 sticky top-0 z-10 bg-white/50 backdrop-blur-md border-b border-gray-100/50 shrink-0">
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-black rounded-xl flex items-center justify-center text-white">
@@ -270,7 +276,7 @@ const App: React.FC = () => {
         </header>
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto p-5 no-scrollbar pb-28">
+        <main className="flex-1 overflow-y-auto p-5 no-scrollbar pb-32">
             {view === View.Dashboard ? (
                 <Dashboard 
                     viewingDate={viewingDate}
@@ -292,7 +298,12 @@ const App: React.FC = () => {
         </main>
 
         {/* Bottom Navigation Floating Island */}
-        <div className="absolute bottom-6 left-0 right-0 flex justify-center z-20 pointer-events-none">
+        {/* 
+            UPDATED NAV STYLES:
+            Changed to `absolute` positioning. Since parent is now `h-[100dvh]`, 
+            this will strictly stick to the bottom of the screen/container.
+        */}
+        <div className="absolute bottom-8 left-0 right-0 flex justify-center z-50 pointer-events-none">
             <nav className="bg-black/90 backdrop-blur-xl text-white rounded-full px-2 py-1.5 shadow-2xl pointer-events-auto flex gap-1 border border-white/10 scale-95">
                 <button 
                     onClick={() => handleTabChange(View.Dashboard)}
