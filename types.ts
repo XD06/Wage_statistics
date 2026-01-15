@@ -32,11 +32,20 @@ export interface WeekData {
   expenses: Expense[];
 }
 
+export interface WebDAVConfig {
+  enabled: boolean;
+  url: string;      // e.g., https://dav.jianguoyun.com/dav/
+  username: string;
+  password: string; // In a real production app, this should be encrypted, but localstorage is acceptable for client-side only apps
+  filename?: string; // Default to 'weekly_keeper_backup.json'
+}
+
 export interface AppState {
   currentDailySubsidySetting: number; // New setting
   currentHourlyRateSetting: number; 
   currentShiftSetting: ShiftMode; 
-  weeks: Record<string, WeekData>; 
+  weeks: Record<string, WeekData>;
+  webdav?: WebDAVConfig; 
 }
 
 export const STORAGE_KEY = 'weekly_keeper_data_v4'; // Bump version

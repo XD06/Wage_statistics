@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { LayoutDashboard, History as HistoryIcon, Upload, Sparkles } from 'lucide-react';
-import { AppState, Category, Expense, WeekData, STORAGE_KEY, ShiftMode } from './types';
+import { AppState, Category, Expense, WeekData, STORAGE_KEY, ShiftMode, WebDAVConfig } from './types';
 import { loadData, saveData } from './services/storageService';
+import { uploadToWebDAV } from './services/webdavService';
 import { formatTime, getMonday, formatDateKey, isSunday } from './services/dateService';
 import Dashboard from './components/Dashboard';
 import History from './components/History';
@@ -16,6 +17,9 @@ const App: React.FC = () => {
   const [view, setView] = useState<View>(View.Dashboard);
   const [data, setData] = useState<AppState>(loadData());
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  
+  // Ref to debounce WebDAV uploads
+  const uploadTimeoutRef = useRef<number | null>(null);
 
   // State: The specific date the user is currently viewing/editing in Dashboard
   const [viewingDate, setViewingDate] = useState<Date>(new Date());
@@ -61,15 +65,28 @@ const App: React.FC = () => {
   }, [viewingWeekKey]);
 
   useEffect(() => {
+    // 1. Save to LocalStorage immediately
     saveData(data);
+
+    // 2. Trigger WebDAV upload (Debounced) if enabled
+    if (data.webdav?.enabled) {
+        if (uploadTimeoutRef.current) {
+            window.clearTimeout(uploadTimeoutRef.current);
+        }
+        uploadTimeoutRef.current = window.setTimeout(() => {
+            console.log("Triggering WebDAV background upload...");
+            uploadToWebDAV(data, data.webdav!).catch(e => console.error("Background Upload failed", e));
+        }, 2000); // 2 second debounce
+    }
   }, [data]);
 
-  const handleSetSettings = (dailySubsidy: number, hourlyRate: number, shift: ShiftMode) => {
+  const handleSetSettings = (dailySubsidy: number, hourlyRate: number, shift: ShiftMode, webdav: WebDAVConfig) => {
     setData(prev => ({
       ...prev,
       currentDailySubsidySetting: dailySubsidy, 
       currentHourlyRateSetting: hourlyRate,
       currentShiftSetting: shift,
+      webdav: webdav, // Save WebDAV config
       weeks: {
         ...prev.weeks,
         [viewingWeekKey]: {
@@ -80,6 +97,11 @@ const App: React.FC = () => {
         }
       }
     }));
+  };
+
+  const handleRestoreData = (newData: AppState) => {
+      setData(newData);
+      alert("数据已成功恢复！");
   };
 
   const handleUpdateWorkHours = (hours: number) => {
@@ -268,10 +290,16 @@ const App: React.FC = () => {
                         <p className="text-[10px] text-gray-500 font-medium tracking-wider uppercase mt-0.5">Pro Edition</p>
                     </div>
                 </div>
-                <label className="p-2 text-gray-400 hover:text-black cursor-pointer transition-colors bg-gray-50 hover:bg-gray-100 rounded-full">
-                    <Upload size={18} />
-                    <input type="file" className="hidden" accept=".json" onChange={handleFileImport} />
-                </label>
+                <div className="flex items-center gap-2">
+                    {/* Status Dot for WebDAV */}
+                    {data.webdav?.enabled && (
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="云同步已开启"></div>
+                    )}
+                    <label className="p-2 text-gray-400 hover:text-black cursor-pointer transition-colors bg-gray-50 hover:bg-gray-100 rounded-full">
+                        <Upload size={18} />
+                        <input type="file" className="hidden" accept=".json" onChange={handleFileImport} />
+                    </label>
+                </div>
             </div>
         </header>
 
@@ -298,11 +326,6 @@ const App: React.FC = () => {
         </main>
 
         {/* Bottom Navigation Floating Island */}
-        {/* 
-            UPDATED NAV STYLES:
-            Changed to `absolute` positioning. Since parent is now `h-[100dvh]`, 
-            this will strictly stick to the bottom of the screen/container.
-        */}
         <div className="absolute bottom-8 left-0 right-0 flex justify-center z-50 pointer-events-none">
             <nav className="bg-black/90 backdrop-blur-xl text-white rounded-full px-2 py-1.5 shadow-2xl pointer-events-auto flex gap-1 border border-white/10 scale-95">
                 <button 
@@ -328,7 +351,10 @@ const App: React.FC = () => {
             currentDailySubsidy={currentWeekData.dailySubsidy}
             currentHourlyRate={currentWeekData.hourlyRate || 0}
             currentShift={currentWeekData.shiftMode || 'day'}
+            currentWebDAV={data.webdav}
+            fullDataState={data}
             onSave={handleSetSettings}
+            onRestoreData={handleRestoreData}
         />
 
       </div>
