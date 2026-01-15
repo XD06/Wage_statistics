@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { LayoutDashboard, History as HistoryIcon, Upload, Sparkles } from 'lucide-react';
-import { AppState, Category, Expense, WeekData, STORAGE_KEY, ShiftMode, WebDAVConfig } from './types';
+import { LayoutDashboard, History as HistoryIcon, Upload, Sparkles, Server } from 'lucide-react';
+import { AppState, Category, Expense, WeekData, STORAGE_KEY, ShiftMode } from './types';
 import { loadData, saveData } from './services/storageService';
-import { uploadToWebDAV } from './services/webdavService';
+import { saveToServer, loadFromServer } from './services/apiService';
 import { formatTime, getMonday, formatDateKey, isSunday } from './services/dateService';
 import Dashboard from './components/Dashboard';
 import History from './components/History';
@@ -17,24 +17,37 @@ const App: React.FC = () => {
   const [view, setView] = useState<View>(View.Dashboard);
   const [data, setData] = useState<AppState>(loadData());
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [serverConnected, setServerConnected] = useState(false);
   
-  // Ref to debounce WebDAV uploads
+  // Ref to debounce uploads
   const uploadTimeoutRef = useRef<number | null>(null);
 
-  // State: The specific date the user is currently viewing/editing in Dashboard
   const [viewingDate, setViewingDate] = useState<Date>(new Date());
-
-  // Derived: Determine the week key for the VIEWING date
   const viewingWeekMonday = getMonday(viewingDate);
   const viewingWeekKey = formatDateKey(viewingWeekMonday);
   const viewingDateStr = formatDateKey(viewingDate);
 
+  // Initial Load from Server (Priority over LocalStorage)
+  useEffect(() => {
+      loadFromServer().then(serverData => {
+          if (serverData) {
+              console.log("Loaded data from server");
+              setData(serverData);
+              setServerConnected(true);
+          } else {
+              // Try check if server is reachable even if 404
+              setServerConnected(true); 
+          }
+      }).catch(err => {
+          console.error("Server unreachable", err);
+          setServerConnected(false);
+      });
+  }, []);
+
   // Initialize data for the viewing week if it doesn't exist
   useEffect(() => {
     setData(prev => {
-      // If the week for the selected date doesn't exist, create it based on current settings
       if (!prev.weeks[viewingWeekKey]) {
-        // Initialize default work days (Mon-Sat)
         const defaultWorkDays: Record<string, boolean> = {};
         for (let i = 0; i < 6; i++) {
             const d = new Date(viewingWeekMonday);
@@ -50,9 +63,9 @@ const App: React.FC = () => {
             [viewingWeekKey]: {
               weekStartDate: viewingWeekKey,
               dailySubsidy: prev.currentDailySubsidySetting,
-              budget: prev.currentDailySubsidySetting * 6, // Backward compat roughly
+              budget: prev.currentDailySubsidySetting * 6,
               hourlyRate: prev.currentHourlyRateSetting || 0,
-              shiftMode: prev.currentShiftSetting || 'day', // Inherit setting
+              shiftMode: prev.currentShiftSetting || 'day',
               dailyHours: {},
               expenses: [],
               workDays: defaultWorkDays
@@ -68,25 +81,23 @@ const App: React.FC = () => {
     // 1. Save to LocalStorage immediately
     saveData(data);
 
-    // 2. Trigger WebDAV upload (Debounced) if enabled
-    if (data.webdav?.enabled) {
-        if (uploadTimeoutRef.current) {
-            window.clearTimeout(uploadTimeoutRef.current);
-        }
-        uploadTimeoutRef.current = window.setTimeout(() => {
-            console.log("Triggering WebDAV background upload...");
-            uploadToWebDAV(data, data.webdav!).catch(e => console.error("Background Upload failed", e));
-        }, 2000); // 2 second debounce
+    // 2. Trigger Server upload (Debounced)
+    if (uploadTimeoutRef.current) {
+        window.clearTimeout(uploadTimeoutRef.current);
     }
+    uploadTimeoutRef.current = window.setTimeout(() => {
+        saveToServer(data).then(success => {
+            setServerConnected(success);
+        });
+    }, 2000); // 2 second debounce
   }, [data]);
 
-  const handleSetSettings = (dailySubsidy: number, hourlyRate: number, shift: ShiftMode, webdav: WebDAVConfig) => {
+  const handleSetSettings = (dailySubsidy: number, hourlyRate: number, shift: ShiftMode) => {
     setData(prev => ({
       ...prev,
       currentDailySubsidySetting: dailySubsidy, 
       currentHourlyRateSetting: hourlyRate,
       currentShiftSetting: shift,
-      webdav: webdav, // Save WebDAV config
       weeks: {
         ...prev.weeks,
         [viewingWeekKey]: {
@@ -101,7 +112,7 @@ const App: React.FC = () => {
 
   const handleRestoreData = (newData: AppState) => {
       setData(newData);
-      alert("数据已成功恢复！");
+      alert("数据已从服务器恢复！");
   };
 
   const handleUpdateWorkHours = (hours: number) => {
@@ -159,7 +170,6 @@ const App: React.FC = () => {
   };
 
   const handleAddExpense = (amount: number, category: Category | null, note: string, time: string) => {
-    // Construct the expense timestamp based on viewingDate + time string
     const [hours, mins] = time.split(':').map(Number);
     const expenseDate = new Date(viewingDate); 
     expenseDate.setHours(hours, mins, 0, 0);
@@ -167,11 +177,9 @@ const App: React.FC = () => {
     const currentWeekData = data.weeks[viewingWeekKey];
     const isNightShift = currentWeekData?.shiftMode === 'night';
 
-    // Auto Categorization Logic
     let finalCategory = category;
     if (!finalCategory) {
       const h = hours + mins / 60;
-      
       if (isNightShift) {
           if (h >= 18.5 && h <= 21) finalCategory = Category.Breakfast;
           else if (h >= 23 || h <= 2) finalCategory = Category.Lunch;
@@ -196,9 +204,7 @@ const App: React.FC = () => {
 
     setData(prev => {
       const week = prev.weeks[viewingWeekKey];
-      // Safety fallback if week missing during race condition
       if (!week) return prev;
-
       return {
         ...prev,
         weeks: {
@@ -214,7 +220,6 @@ const App: React.FC = () => {
 
   const handleDeleteExpense = (weekKey: string, id: string) => {
       if(!window.confirm("确定要删除这条记录吗？")) return;
-      
       setData(prev => ({
           ...prev,
           weeks: {
@@ -270,12 +275,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex justify-center md:py-8">
-      {/* 
-          UPDATED CONTAINER STYLES: 
-          Replaced `min-h-screen` with `h-[100dvh]` to fix mobile scrolling issues.
-          This ensures the container is exactly the viewport height, forcing internal scrolling
-          and keeping the absolute positioned nav bar visible at the bottom.
-      */}
       <div className="w-full md:max-w-md bg-white/80 md:rounded-[40px] h-[100dvh] md:h-[90vh] shadow-2xl relative flex flex-col overflow-hidden glass border border-white/20">
         
         {/* Header */}
@@ -287,14 +286,14 @@ const App: React.FC = () => {
                     </div>
                     <div>
                         <h1 className="text-lg font-extrabold text-gray-900 tracking-tight leading-none">WeeklyKeeper</h1>
-                        <p className="text-[10px] text-gray-500 font-medium tracking-wider uppercase mt-0.5">Pro Edition</p>
+                        <p className="text-[10px] text-gray-500 font-medium tracking-wider uppercase mt-0.5">Self-Hosted</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* Status Dot for WebDAV */}
-                    {data.webdav?.enabled && (
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="云同步已开启"></div>
-                    )}
+                    <div className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full ${serverConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                        <Server size={10} />
+                        {serverConnected ? '已连接' : '离线'}
+                    </div>
                     <label className="p-2 text-gray-400 hover:text-black cursor-pointer transition-colors bg-gray-50 hover:bg-gray-100 rounded-full">
                         <Upload size={18} />
                         <input type="file" className="hidden" accept=".json" onChange={handleFileImport} />
@@ -325,7 +324,6 @@ const App: React.FC = () => {
             )}
         </main>
 
-        {/* Bottom Navigation Floating Island */}
         <div className="absolute bottom-8 left-0 right-0 flex justify-center z-50 pointer-events-none">
             <nav className="bg-black/90 backdrop-blur-xl text-white rounded-full px-2 py-1.5 shadow-2xl pointer-events-auto flex gap-1 border border-white/10 scale-95">
                 <button 
@@ -351,7 +349,6 @@ const App: React.FC = () => {
             currentDailySubsidy={currentWeekData.dailySubsidy}
             currentHourlyRate={currentWeekData.hourlyRate || 0}
             currentShift={currentWeekData.shiftMode || 'day'}
-            currentWebDAV={data.webdav}
             fullDataState={data}
             onSave={handleSetSettings}
             onRestoreData={handleRestoreData}

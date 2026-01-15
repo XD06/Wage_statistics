@@ -1,20 +1,25 @@
-import { AppState, WebDAVConfig } from '../types';
+import { AppState } from '../types';
+
+export interface WebDAVConfig {
+  enabled: boolean;
+  url: string;
+  username?: string;
+  password?: string;
+  filename?: string;
+}
 
 const DEFAULT_FILENAME = 'weekly_keeper_data.json';
 
-// Helper to handle UTF-8 strings in Base64 (correctly handles special chars in passwords)
+// Helper to handle UTF-8 strings in Base64
 const utf8_to_b64 = (str: string) => {
   return window.btoa(unescape(encodeURIComponent(str)));
 };
 
 const getHeaders = (config: WebDAVConfig) => {
-  // Use UTF-8 safe encoding for credentials
-  const auth = utf8_to_b64(`${config.username}:${config.password}`);
+  const auth = utf8_to_b64(`${config.username || ''}:${config.password || ''}`);
   return {
     'Authorization': `Basic ${auth}`,
-    // OPTIMIZATION: Removed 'Content-Type': 'application/json'
-    // WebDAV servers usually ignore this for storage or detect via extension (.json).
-    // Removing it simplifies the CORS preflight check (fewer headers to validate).
+    // 极简模式：不发送 Content-Type，让浏览器自动处理，减少预检复杂度
   };
 };
 
@@ -24,7 +29,7 @@ const getFullUrl = (config: WebDAVConfig) => {
   
   // Mixed Content Check
   if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.toLowerCase().startsWith('http:')) {
-      throw new Error("安全策略限制 (Mixed Content)：\n当前网页运行在 HTTPS 环境，浏览器为了安全，强制禁止直接访问不加密的 HTTP 服务器。\n\n解决方法：\n1. 请使用 https:// 开头的 WebDAV 地址。\n2. 或者给您的服务器配置 SSL 证书。");
+      throw new Error("安全策略限制：HTTPS 网页无法访问 HTTP 资源。请使用 https:// 开头的 WebDAV 地址。");
   }
 
   if (!url.endsWith('/')) url += '/';
@@ -37,28 +42,29 @@ export const uploadToWebDAV = async (data: AppState, config: WebDAVConfig): Prom
 
   try {
     const url = getFullUrl(config);
+    // 纯净请求配置
     const response = await fetch(url, {
       method: 'PUT',
       headers: getHeaders(config),
       body: JSON.stringify(data),
-      mode: 'cors', // Explicitly request CORS
+      mode: 'cors', 
+      credentials: 'omit', // 不发送 Cookie，防止干扰
+      referrerPolicy: 'no-referrer', // 不发送来源信息，防止防火墙拦截
+      keepalive: true, // 保持连接
     });
 
     if (response.ok || response.status === 201 || response.status === 204) {
       console.log('WebDAV Upload Successful');
       return true;
     } else {
-      console.error('WebDAV Upload Failed', response.status, response.statusText);
-      throw new Error(`服务器返回 ${response.status}: ${response.statusText}`);
+      throw new Error(`状态码: ${response.status} ${response.statusText}`);
     }
   } catch (error: any) {
     console.error('WebDAV Error:', error);
-    if (error.message && error.message.includes('Mixed Content')) {
-        throw error;
-    }
-    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-       // Enhanced error message for Nginx/Panel CORS pitfalls
-       throw new Error('连接被中断 (Failed to fetch)。\n\n如果您使用宝塔/aaPanel，请注意 Nginx 的陷阱：\n如果 "反向代理" 配置文件内部有任何 add_header 指令，您在外部添加的 CORS 头会被直接忽略。\n\n解决办法：请将 CORS 配置直接粘贴到 Nginx 代理配置文件(proxy/*.conf)的内部，紧跟在 proxy_pass 下方。');
+    // 给用户的最终解释
+    const msg = error.message || '';
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+       throw new Error('网络连接中断。\n\n这是浏览器拦截了请求，通常是因为服务器 Nginx 配置拒绝了跨域(CORS)，或者 HTTP2 协议出现了兼容性问题。\n\n请尝试修改 Nginx 配置去掉 http2 尝试。');
     }
     throw error;
   }
@@ -69,31 +75,28 @@ export const downloadFromWebDAV = async (config: WebDAVConfig): Promise<AppState
 
   try {
     const url = getFullUrl(config);
-    // Add a timestamp to prevent caching
-    const fetchUrl = `${url}?t=${new Date().getTime()}`;
+    const fetchUrl = `${url}?t=${new Date().getTime()}`; // 防缓存
     
     const response = await fetch(fetchUrl, {
       method: 'GET',
       headers: getHeaders(config),
       mode: 'cors',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
     });
 
     if (response.ok) {
-      const data = await response.json();
-      return data as AppState;
+      return await response.json() as AppState;
     } else if (response.status === 404) {
-      console.warn('WebDAV file not found (404)');
       return null;
     } else {
-      throw new Error(`下载失败: ${response.status} ${response.statusText}`);
+      throw new Error(`下载失败: ${response.status}`);
     }
   } catch (error: any) {
     console.error('WebDAV Download Error:', error);
-    if (error.message && error.message.includes('Mixed Content')) {
-        throw error;
-    }
-    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-       throw new Error('连接失败 (CORS)。请检查 Nginx 代理配置是否覆盖了 Access-Control-Allow-Headers 头。');
+    const msg = error.message || '';
+    if (msg.includes('Failed to fetch')) {
+        throw new Error('网络连接中断 (CORS/HTTP2)。请检查 Nginx 配置。');
     }
     throw error;
   }
