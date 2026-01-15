@@ -25,7 +25,8 @@ FROM node:18-alpine
 WORKDIR /app
 
 # 这里的 server.js 需要 express，我们单独安装它作为生产依赖
-RUN npm install express
+# 使用 @4 锁定版本，避免自动安装 Express 5 导致兼容性问题
+RUN npm install express@4
 
 # 复制 Node.js 服务器脚本
 COPY server.js .

@@ -51,7 +51,8 @@ app.post('/api/data', async (req, res) => {
 });
 
 // Handle React Routing (return index.html for all non-API routes)
-app.get('*', (req, res) => {
+// Use Regex /.*/ to match all routes, compatible with both Express 4 and 5
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
